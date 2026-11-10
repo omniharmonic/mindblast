@@ -29,6 +29,10 @@ export class GameSession {
       id,
       name: String(name || "Explorer").slice(0, 18),
       send,
+      avatar: Array.from({ length: 8 }, (_, i) => i).find(
+        (i) => ![...this.players.values()].some((p) => p.avatar === i),
+      ),
+      weapon: 0,
       position: { x: 0, y: 2, z: 34 },
       yaw: 0,
       lastShot: 0,
@@ -52,7 +56,14 @@ export class GameSession {
       players: [...this.players.values()].map(({ send, ...p }) => p),
     });
     this.broadcast(
-      { type: "player", id, name: p.name, position: p.position },
+      {
+        type: "player",
+        id,
+        name: p.name,
+        position: p.position,
+        avatar: p.avatar,
+        weapon: p.weapon,
+      },
       id,
     );
   }
@@ -75,8 +86,15 @@ export class GameSession {
     if (m.type === "move" && validPoint(m.position) && Number.isFinite(m.yaw)) {
       p.position = m.position;
       p.yaw = m.yaw;
+      if (Number.isInteger(m.weapon) && WEAPONS[m.weapon]) p.weapon = m.weapon;
       this.broadcast(
-        { type: "move", id, position: p.position, yaw: p.yaw },
+        {
+          type: "move",
+          id,
+          position: p.position,
+          yaw: p.yaw,
+          weapon: p.weapon,
+        },
         id,
       );
     }

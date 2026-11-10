@@ -680,62 +680,6 @@ footer {
     transform: rotate(360deg);
   }
 }
-#weaponView {
-  pointer-events: none;
-  position: fixed;
-  bottom: 130px;
-  right: 9%;
-  width: 170px;
-  height: 180px;
-  transform: rotate(-16deg);
-  filter: drop-shadow(12px 14px 10px #10262b55);
-  opacity: 0.9;
-}
-.barrel {
-  position: absolute;
-  top: 0;
-  left: 42px;
-  width: 63px;
-  height: 120px;
-  background: linear-gradient(90deg, #324846, #7c8d7c 45%, #2c4241);
-  border: 8px solid #223a3b;
-  border-radius: 18px 18px 5px 5px;
-}
-.receiver {
-  position: absolute;
-  top: 70px;
-  left: 25px;
-  width: 102px;
-  height: 94px;
-  background: linear-gradient(90deg, #3d5150, #829080 60%, #415854);
-  border: 3px solid #2e4444;
-  border-radius: 10px;
-  transform: skewY(-6deg);
-}
-.receiver i {
-  display: block;
-  margin: 17px 12px;
-  width: 50px;
-  height: 8px;
-  background: var(--tool-color, #f6ce83);
-  box-shadow: 0 0 10px var(--tool-color, #f6ce83);
-  border-radius: 2px;
-}
-.receiver span {
-  font-size: 9px;
-  color: #d4dbcc;
-  margin-left: 12px;
-  letter-spacing: 2px;
-}
-.grip {
-  position: absolute;
-  top: 155px;
-  left: 52px;
-  width: 47px;
-  height: 60px;
-  background: repeating-linear-gradient(0deg, #263c3d 0 6px, #365052 6px 9px);
-  border-radius: 4px;
-}
 body.playing #vignette {
   background: radial-gradient(ellipse, transparent 40%, #112b3233);
 }
@@ -776,10 +720,6 @@ body.playing header {
   }
   .arsenal button {
     width: 53px;
-  }
-  #weaponView {
-    right: 4%;
-    transform: scale(0.8) rotate(-16deg);
   }
 }
 @media (max-width: 700px) {
@@ -844,7 +784,6 @@ body.playing header {
   }
   .objective,
   .telemetry,
-  #weaponView,
   .play-hint {
     display: none;
   }

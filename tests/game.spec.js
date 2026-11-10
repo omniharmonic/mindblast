@@ -101,6 +101,7 @@ for (let i = 0; i < 12; i++)
         throw e;
       });
     expect((await state(page)).weapon).toBe(i);
+    expect((await state(page)).weaponModel).toBe(i);
     expect(errors).toEqual([]);
   });
 test("three-minute mode finishes and can return to sandbox", async ({
@@ -142,6 +143,22 @@ test("LAN clients share destruction and a late join receives the damaged world",
     expect((await state(c)).score).toBe((await state(a)).score);
     expect((await state(c)).removed).toBe((await state(a)).removed);
     expect((await state(c)).players).toBe(2);
+    const avatars = (await state(c)).avatars;
+    expect(new Set(avatars.map((p) => p.avatar)).size).toBe(2);
+    expect(avatars.map((p) => p.avatar).sort()).toEqual([0, 1]);
+    await b.keyboard.press("6");
+    await expect
+      .poll(
+        async () =>
+          (await state(a)).avatars.find((p) => p.avatar === 1)?.weapon,
+      )
+      .toBe(5);
+    await expect
+      .poll(
+        async () =>
+          (await state(c)).avatars.find((p) => p.avatar === 1)?.weapon,
+      )
+      .toBe(5);
     await a.locator("#shuffle").click();
     await expect
       .poll(async () => (await state(b)).seed, { timeout: 30000 })

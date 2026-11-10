@@ -1,3 +1,9 @@
+import {
+  WeaponView,
+  buildCharacter,
+  animateCharacter,
+  disposeModel,
+} from "./characters.js";
 import { colliderBoxes } from "./fragments.js";
 import * as THREE from "three";
 import RAPIER from "@dimforge/rapier3d-compat";
@@ -50,6 +56,7 @@ renderer.toneMappingExposure = 1.2;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color("#b6c9c4");
 scene.fog = new THREE.Fog("#b6c9c4", 45, 105);
+const weaponView = new WeaponView(renderer);
 const camera = new THREE.PerspectiveCamera(
   65,
   innerWidth / innerHeight,
@@ -884,6 +891,7 @@ function fire() {
     return;
   }
   cool = w.cooldown;
+  weaponView.fire();
   const target = new THREE.Vector3(hit.x, hit.y, hit.z);
   if (wi === 7) {
     if (charges.length >= 40) {
@@ -952,14 +960,6 @@ function fire() {
     scene.add(line);
     effects.push({ mesh: line, age: 0, life: 0.13, kind: "beam" });
   }
-  $("weaponView").animate(
-    [
-      { transform: "rotate(-16deg) translateY(0)" },
-      { transform: "rotate(-22deg) translateY(15px)" },
-      { transform: "rotate(-16deg) translateY(0)" },
-    ],
-    { duration: 180 },
-  );
 }
 function sound(wi, volume = 1) {
   if (!$("sound").checked || !audio) return;
@@ -1013,6 +1013,7 @@ for (const [i, w] of WEAPONS.entries()) {
 }
 function selectWeapon(i) {
   weapon = i;
+  weaponView.select(i, WEAPONS[i].color);
   [...$("arsenal").children].forEach((b, j) =>
     b.classList.toggle("active", i === j),
   );
@@ -1111,6 +1112,7 @@ function bindSocket(transport) {
     if (m.type === "welcome") {
       netId = m.id;
       hostId = m.host;
+      weaponView.setSuit(m.players.find((p) => p.id === netId)?.avatar ?? 0);
       roomCode = m.room;
       settings = sanitizeSettings(m.settings);
       syncSettingsUI();
@@ -1136,16 +1138,15 @@ function bindSocket(transport) {
       if (p) {
         p.target.set(m.position.x, m.position.y - 1, m.position.z);
         p.mesh.rotation.y = m.yaw;
+        if (Number.isInteger(m.weapon) && WEAPONS[m.weapon])
+          p.weapon = m.weapon;
       }
     }
     if (m.type === "leave") {
       const p = remote.get(m.id);
       if (p) {
         scene.remove(p.mesh);
-        p.mesh.traverse((o) => {
-          o.geometry?.dispose();
-          o.material?.dispose();
-        });
+        disposeModel(p.mesh);
         remote.delete(m.id);
       }
     }
@@ -1304,40 +1305,28 @@ $("peerCopy").onclick = async () => {
 };
 function addRemote(p) {
   if (remote.has(p.id)) return;
-  const group = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.35, 0.7, 4, 8),
-    new THREE.MeshStandardMaterial({ color: "#d5a670" }),
-  );
-  group.add(body);
-  const visor = new THREE.Mesh(
-    new THREE.BoxGeometry(0.5, 0.18, 0.18),
-    new THREE.MeshStandardMaterial({
-      color: "#82d6d6",
-      emissive: "#24666a",
-      emissiveIntensity: 0.3,
-    }),
-  );
-  visor.position.set(0, 0.45, -0.29);
-  group.add(visor);
+  const slot =
+    Number.isInteger(p.avatar) && p.avatar >= 0 && p.avatar < 8 ? p.avatar : 0;
+  const group = buildCharacter(p.name, slot);
   group.position.set(p.position.x, p.position.y - 1, p.position.z);
+  group.rotation.y = p.yaw || 0;
   scene.add(group);
   remote.set(p.id, {
     mesh: group,
     target: group.position.clone(),
     name: p.name,
+    avatar: slot,
+    weapon: p.weapon || 0,
   });
 }
 function clearRemote() {
   for (const p of remote.values()) {
     scene.remove(p.mesh);
-    p.mesh.traverse((o) => {
-      o.geometry?.dispose();
-      o.material?.dispose();
-    });
+    disposeModel(p.mesh);
   }
   remote.clear();
 }
+
 async function showNetwork() {
   if (location.hostname.endsWith("github.io")) {
     $("room").hidden = true;
@@ -1797,8 +1786,11 @@ function tick(now) {
       e.mesh.scale.setScalar(1 + t * 4);
     }
   }
-  for (const p of remote.values())
+  for (const p of remote.values()) {
+    const moving = p.mesh.position.distanceToSquared(p.target) > 0.0004;
     p.mesh.position.lerp(p.target, Math.min(1, rawDt * 12));
+    animateCharacter(p.mesh, rawDt, moving, p.weapon, WEAPONS[p.weapon].color);
+  }
   if (elapsed - lastNetwork > 0.1) {
     lastNetwork = elapsed;
     if (playing) {
@@ -1832,10 +1824,17 @@ function tick(now) {
           type: "move",
           position: { x: position.x, y: position.y, z: position.z },
           yaw,
+          weapon,
         }),
       );
   }
   renderer.render(scene, camera);
+  weaponView.render(
+    renderer,
+    rawDt,
+    playing,
+    ["KeyW", "KeyA", "KeyS", "KeyD"].some((k) => keys.has(k)),
+  );
 }
 async function init() {
   try {
@@ -1885,6 +1884,13 @@ window.__mindblast = {
       position: position.toArray(),
       connected: !!netId,
       players: remote.size,
+      avatars: [...remote.entries()].map(([id, p]) => ({
+        id,
+        name: p.name,
+        avatar: p.avatar,
+        weapon: p.weapon,
+      })),
+      weaponModel: weaponView.index,
       host: !!netId && hostId === netId,
       remaining,
       mode,

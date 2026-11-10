@@ -46,6 +46,10 @@ Alternatively, run the Node server on one computer. Everyone opens its printed `
 
 Tools include rockets, scatter blasts, gravity wells, seismic pulses, precision beams, meteors, tunnel drills, demolition charges, thermobaric bombs, orbital lances, fault-line cutters, and supernovas. The host can tune radius, impulse, gravity, and the physical debris budget. Free roam has no timer; Demolition run scores a three-minute session.
 
+## Characters and equipment
+
+Every tool has a 3D first-person model with metallic surfaces, gloved hands, sights, and recoil. Multiplayer rooms assign up to eight distinct suit colors and helmet crests, numbered nameplates, walking animations, and visible equipped weapons. Appearances are consistent across clients and late joins.
+
 ## World and destruction
 
 - Seeded castles, cathedrals, aqueducts, houses, manors, pagodas, observatories, windmills, amphitheatres, foundries, lighthouses, temples, clock towers, greenhouses, markets, fortresses, libraries, ziggurats, viaducts, and bathhouses. Dimensions, heights, arrangements, interiors, and furnishings vary. Buildings have doors, floor openings, and stairs.

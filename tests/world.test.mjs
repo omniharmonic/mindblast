@@ -246,3 +246,49 @@ test("fragment collider merging preserves exact occupied cells and materials", a
   );
   assert.ok(boxes.length < blocks.length / 3);
 });
+
+test("room assigns eight unique avatars and preserves identity in snapshots and moves", async () => {
+  const { GameSession } = await import("../src/session.js");
+  const session = new GameSession("AVATARS"),
+    messages = new Map();
+  for (let i = 0; i < 8; i++) {
+    const list = [];
+    messages.set(String(i), list);
+    session.join(String(i), "Player " + i, (m) => list.push(m));
+  }
+  assert.equal(
+    new Set([...session.players.values()].map((p) => p.avatar)).size,
+    8,
+  );
+  const snapshot = messages.get("7").find((m) => m.type === "welcome");
+  assert.deepEqual(
+    snapshot.players.map((p) => p.avatar),
+    [0, 1, 2, 3, 4, 5, 6, 7],
+  );
+  assert.equal(
+    messages.get("0").find((m) => m.type === "player" && m.id === "7").avatar,
+    7,
+  );
+  session.handle("3", {
+    type: "move",
+    position: { x: 1, y: 2, z: 3 },
+    yaw: 0.4,
+    weapon: 6,
+  });
+  assert.equal(messages.get("0").at(-1).weapon, 6);
+  session.handle("3", {
+    type: "move",
+    position: { x: 1, y: 2, z: 3 },
+    yaw: 0.4,
+    weapon: 99,
+  });
+  assert.equal(session.players.get("3").weapon, 6);
+  session.leave("2");
+  const late = [];
+  session.join("replacement", "New player", (m) => late.push(m));
+  assert.equal(session.players.get("replacement").avatar, 2);
+  assert.equal(session.players.get("3").avatar, 3);
+  assert.equal(late[0].players.find((p) => p.id === "3").weapon, 6);
+  session.handle("0", { type: "reset", seed: "NEXT" });
+  assert.equal(session.players.get("3").avatar, 3);
+});
