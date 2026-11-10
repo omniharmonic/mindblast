@@ -1,0 +1,248 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  generateWorld,
+  destroy,
+  key,
+  raycast,
+  applyRemoved,
+  WEAPONS,
+  ensureRegion,
+  resolveShot,
+  sanitizeSettings,
+} from "../src/world.js";
+test("seeds reproduce exactly, and different seeds vary geometry", () => {
+  const a = generateWorld("one"),
+    b = generateWorld("one"),
+    c = generateWorld("two");
+  assert.deepEqual(a.blocks, b.blocks);
+  assert.notDeepEqual(a.blocks, c.blocks);
+  assert.equal(a.grid.size, a.blocks.length);
+  assert.ok(
+    a.structures.filter((s) => s.type !== "Crystal grotto").length >= 24,
+  );
+  assert.ok(new Set(a.structures.map((s) => s.type)).size >= 15);
+});
+test("removing a foundation collapses disconnected upper blocks", () => {
+  const blocks = Array.from({ length: 6 }, (_, y) => ({
+    id: y,
+    x: 0,
+    y,
+    z: 0,
+    structure: 0,
+    alive: true,
+  }));
+  const w = {
+    blocks,
+    grid: new Map(blocks.map((b) => [key(b.x, b.y, b.z), b.id])),
+    structures: [{ id: 0, ids: blocks.map((b) => b.id) }],
+    removed: 0,
+    score: 0,
+  };
+  const r = destroy(w, { x: 0, y: 0.75, z: 0 }, 0.2);
+  assert.deepEqual(r.hit, [1]);
+  assert.deepEqual(r.fallen, [2, 3, 4, 5]);
+  assert.equal(w.grid.size, 1);
+  assert.equal(w.score, 90);
+});
+test("a surviving alternate load path supports an overhang", () => {
+  const blocks = [];
+  for (let x = 0; x < 3; x++)
+    for (let y = 0; y < 3; y++)
+      if (x === 0 || x === 2 || y === 2)
+        blocks.push({
+          id: blocks.length,
+          x,
+          y,
+          z: 0,
+          structure: 0,
+          alive: true,
+        });
+  const w = {
+    blocks,
+    grid: new Map(blocks.map((b) => [key(b.x, b.y, b.z), b.id])),
+    structures: [{ id: 0, ids: blocks.map((b) => b.id) }],
+    removed: 0,
+    score: 0,
+  };
+  const r = destroy(w, { x: 0, y: 0.75, z: 0 }, 0.2);
+  assert.equal(r.fallen.length, 0);
+});
+test("all weapons remove blocks and repeated destruction never counts twice", () => {
+  for (const weapon of WEAPONS) {
+    const w = generateWorld();
+    const result = destroy(w, { x: 12, y: 3, z: 9.75 }, weapon.radius);
+    assert.ok(result.hit.length > 0, weapon.name);
+    const count = w.removed,
+      score = w.score;
+    const again = destroy(w, { x: 12, y: 3, z: 9.75 }, weapon.radius);
+    assert.equal(again.points, 0);
+    assert.equal(w.removed, count);
+    assert.equal(w.score, score);
+    assert.equal(w.grid.size, w.blocks.length - w.removed);
+  }
+});
+test("snapshot deletion matches authoritative world and is idempotent", () => {
+  const a = generateWorld(),
+    b = generateWorld();
+  const r = destroy(a, { x: 12, y: 3, z: 9.75 }, 8);
+  const ids = [...r.hit, ...r.fallen];
+  applyRemoved(b, ids);
+  applyRemoved(b, ids);
+  assert.equal(b.removed, a.removed);
+  assert.deepEqual(b.grid, a.grid);
+});
+test("raycast hits masonry and ground, not removed voxels", () => {
+  const w = generateWorld();
+  const hit = raycast(w, { x: 8, y: 3, z: 30 }, { x: 0, y: 0, z: -1 });
+  assert.notEqual(hit?.id, undefined);
+  assert.equal(w.blocks[hit.id].alive, true);
+  const ground = raycast(w, { x: 0, y: 10, z: 50 }, { x: 0, y: -1, z: 0 });
+  assert.equal(ground.id, null);
+  assert.ok(Math.abs(ground.y - w.terrain.surface(0, 50)) < 1e-6);
+});
+test("large demolition preserves grid integrity and finite scores", () => {
+  const w = generateWorld();
+  for (let x = -15; x <= 15; x += 5) destroy(w, { x, y: 2, z: 8 }, 10);
+  assert.ok(w.removed > 1000);
+  assert.equal(w.grid.size, w.blocks.length - w.removed);
+  assert.ok(Number.isFinite(w.score));
+  for (const b of w.blocks)
+    assert.equal(w.grid.has(key(b.x, b.y, b.z)), b.alive);
+});
+
+test("terrain is excavatable below ground and damage survives replay", () => {
+  const a = generateWorld("DIG"),
+    b = generateWorld("DIG");
+  const p = { x: 0, y: a.terrain.surface(0, 34) - 2, z: 34 };
+  const hit = destroy(a, p, 4);
+  assert.ok(hit.terrain.length > 0);
+  b.terrain.apply(hit.terrain);
+  for (const k of hit.terrain) {
+    const xyz = k.split(",").map(Number);
+    assert.equal(a.terrain.get(...xyz), 0);
+    assert.equal(b.terrain.get(...xyz), 0);
+  }
+  assert.equal(destroy(a, p, 4).terrain.length, 0);
+});
+test("undermining terrain collapses a structure without a direct masonry hit", () => {
+  const w = generateWorld();
+  const b = { id: 0, x: 0, y: 0, z: 80, structure: 0, alive: true };
+  w.blocks = [b];
+  w.grid = new Map([[key(0, 0, 80), 0]]);
+  w.structures = [
+    {
+      id: 0,
+      ids: [0],
+      baseY: 0,
+      bounds: { minX: 0, maxX: 0, minZ: 80, maxZ: 80 },
+    },
+  ];
+  w.terrain.pads = [{ minX: -1, maxX: 1, minZ: 39, maxZ: 41, h: -1 }];
+  w.terrain.columns.clear();
+  const r = destroy(w, { x: 0, y: -2, z: 60 }, 1.8);
+  assert.equal(r.hit.length, 0);
+  assert.deepEqual(r.fallen, [0]);
+});
+test("new districts are deterministic and preserve existing block ids and damage", () => {
+  const a = generateWorld("EXPAND"),
+    b = generateWorld("EXPAND");
+  destroy(a, { x: 12, y: 2, z: 9 }, 5);
+  const count = a.blocks.length,
+    old = a.blocks[100];
+  ensureRegion(a, 1, 0);
+  ensureRegion(b, 1, 0);
+  assert.ok(a.blocks.length > count);
+  assert.equal(a.blocks[100], old);
+  assert.deepEqual(a.blocks.slice(count), b.blocks.slice(count));
+  const expanded = a.blocks.length;
+  ensureRegion(a, 1, 0);
+  assert.equal(a.blocks.length, expanded);
+  assert.ok(a.structures.some((s) => s.x > 200));
+});
+test("cave chambers are open and contain mineable crystal formations", () => {
+  const w = generateWorld(),
+    n = w.terrain.caveRegion(0, 0).nodes[0];
+  assert.equal(
+    w.terrain.get(Math.round(n.x), Math.round(n.y), Math.round(n.z)),
+    0,
+  );
+  const crystals = w.blocks.filter((b) => b.material === "crystal" && b.y < 0);
+  assert.ok(crystals.length > 100);
+  const b = crystals[0],
+    r = destroy(w, { x: b.x * 0.75, y: b.y * 0.75, z: b.z * 0.75 }, 2);
+  assert.ok(r.crystals > 0);
+  assert.ok(w.crystals > 0);
+});
+test("tuning changes blast size and novel weapons have distinct blast patterns", () => {
+  const a = generateWorld(),
+    b = generateWorld();
+  resolveShot(a, { x: 12, y: 2, z: 9 }, 0, { radius: 0.5, force: 1 });
+  resolveShot(b, { x: 12, y: 2, z: 9 }, 0, { radius: 2, force: 1 });
+  assert.ok(b.removed > a.removed);
+  assert.ok(b.terrain.removed.size > a.terrain.removed.size);
+  assert.equal(WEAPONS.length, 12);
+  const events = resolveShot(generateWorld(), { x: 0, y: 0, z: 30 }, 9);
+  assert.equal(events.length, 8);
+  assert.equal(sanitizeSettings({ radius: 100 }).radius, 2.5);
+});
+test("precise rays hit voxel zero and oblique faces reliably", () => {
+  const w = { grid: new Map([[key(0, 0, 0), 0]]) };
+  const d = { x: -1 / Math.sqrt(2), y: 0, z: -1 / Math.sqrt(2) },
+    r = raycast(w, { x: 2, y: 0, z: 2 }, d);
+  assert.equal(r.id, 0);
+  assert.ok(Math.abs(r.x - 0.375) < 1e-6);
+  assert.ok(Math.abs(r.z - 0.375) < 1e-6);
+});
+
+test("finite masonry spans shed an unsupported cantilever", () => {
+  const blocks = [];
+  const add = (x, y) =>
+    blocks.push({
+      id: blocks.length,
+      x,
+      y,
+      z: 0,
+      structure: 0,
+      alive: true,
+      material: "stone",
+    });
+  for (let y = 0; y < 4; y++) add(0, y);
+  for (let x = 1; x < 20; x++) add(x, 3);
+  add(0, 4);
+  const w = {
+    blocks,
+    grid: new Map(blocks.map((b) => [key(b.x, b.y, b.z), b.id])),
+    structures: [{ id: 0, ids: blocks.map((b) => b.id) }],
+    removed: 0,
+    score: 0,
+  };
+  const r = destroy(w, { x: 0, y: 3, z: 0 }, 0.1);
+  assert.ok(r.fallen.length > 10);
+  assert.ok(blocks.find((b) => b.x === 2 && b.y === 3).alive);
+  assert.equal(blocks.find((b) => b.x === 19).alive, false);
+});
+
+test("fragment collider merging preserves exact occupied cells and materials", async () => {
+  const { colliderBoxes } = await import("../src/fragments.js");
+  const blocks = [];
+  for (let x = 0; x < 5; x++)
+    for (let y = 0; y < 4; y++)
+      for (let z = 0; z < 2; z++)
+        if (x !== 2 || y > 1)
+          blocks.push({ x, y, z, material: x === 4 ? "wood" : "stone" });
+  const boxes = colliderBoxes(blocks),
+    cells = [];
+  for (const b of boxes)
+    for (let x = 0; x < b.nx; x++)
+      for (let y = 0; y < b.ny; y++)
+        for (let z = 0; z < b.nz; z++)
+          cells.push(
+            `${b.x - (b.nx - 1) / 2 + x},${b.y - (b.ny - 1) / 2 + y},${b.z - (b.nz - 1) / 2 + z},${b.material}`,
+          );
+  assert.deepEqual(
+    cells.sort(),
+    blocks.map((b) => `${b.x},${b.y},${b.z},${b.material}`).sort(),
+  );
+  assert.ok(boxes.length < blocks.length / 3);
+});

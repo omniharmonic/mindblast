@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#233b3b" />
+    <title>Mind Blast — A beautiful place to break</title>
+    <link rel="icon" href="./favicon.svg" />
+  </head>
+  <body>
+    <canvas id="game" aria-label="Mind Blast 3D world"></canvas>
+    <div id="vignette"></div>
+    <div id="flash"></div>
+    <header>
+      <a class="wordmark" href="./" aria-label="Mind Blast home"
+        >MIND<span class="brand-icon">✳</span>BLAST</a
+      >
+      <div class="top-right">
+        <span id="connection"><i></i> Solo expedition</span
+        ><button id="menuButton" title="Pause and open menu (Esc)">
+          Menu <kbd>esc</kbd>
+        </button>
+      </div>
+    </header>
+    <main id="menu" class="menu">
+      <section class="intro">
+        <span class="edition">The demolition playground</span>
+        <h1>A beautiful<br />place to <em>break.</em></h1>
+        <p>
+          Ancient towers. Quiet villages. One very loud afternoon.<br />Make a
+          little room for chaos.
+        </p>
+        <button id="play" class="primary" disabled>
+          <span id="playLabel">Building your world…</span><span>↗</span>
+        </button>
+        <div class="intro-foot">
+          <span class="live-dot"></span
+          ><span id="worldSummary">Carving the landscape</span>
+        </div>
+      </section>
+      <section class="setup">
+        <div class="setup-heading">
+          <span>Your expedition</span><span class="tiny-mark">✳</span>
+        </div>
+        <div class="mode-tabs">
+          <button class="active" data-mode="sandbox">Free roam</button
+          ><button data-mode="challenge">Demolition run</button>
+        </div>
+        <p id="modeDescription">
+          No timer. No limits. Just you and the aftermath.
+        </p>
+        <label for="seed">World seed</label>
+        <div class="seed-row">
+          <input
+            id="seed"
+            value="AFTERGLOW"
+            maxlength="40"
+            autocomplete="off"
+          /><button
+            id="shuffle"
+            title="Generate a random world seed"
+            aria-label="Random seed"
+          >
+            ⤨
+          </button>
+        </div>
+        <div class="settings-row">
+          <label for="quality">Detail</label
+          ><select id="quality">
+            <option value="balanced">Balanced</option>
+            <option value="high">High</option>
+            <option value="low">Laptop saver</option>
+          </select>
+        </div>
+        <div class="settings-row">
+          <label for="sound">Sound</label
+          ><input type="checkbox" id="sound" checked />
+        </div>
+        <div class="settings-row">
+          <label for="flight">Flight mode</label
+          ><input type="checkbox" id="flight" />
+        </div>
+        <details class="tuning">
+          <summary>Destruction & physics</summary>
+          <label for="setting-radius"
+            >Blast radius <output id="value-radius">1×</output></label
+          ><input
+            id="setting-radius"
+            type="range"
+            min="0.25"
+            max="2.5"
+            step="0.25"
+            value="1"
+          />
+          <label for="setting-force"
+            >Blast force <output id="value-force">1×</output></label
+          ><input
+            id="setting-force"
+            type="range"
+            min="0.25"
+            max="3"
+            step="0.25"
+            value="1"
+          />
+          <label for="setting-debris"
+            >Physical debris <output id="value-debris">240</output></label
+          ><input
+            id="setting-debris"
+            type="range"
+            min="80"
+            max="500"
+            step="20"
+            value="240"
+          />
+          <label for="setting-gravity"
+            >Gravity <output id="value-gravity">18</output></label
+          ><input
+            id="setting-gravity"
+            type="range"
+            min="4"
+            max="30"
+            step="1"
+            value="18"
+          />
+          <p>In multiplayer, the host controls these settings.</p>
+        </details>
+        <button class="text-button" id="friends">
+          Play with friends <span>＋</span>
+        </button>
+        <div id="lan" hidden>
+          <label for="name">Your name</label
+          ><input id="name" value="Explorer" maxlength="18" /><label for="room"
+            >Room code</label
+          ><input id="room" value="FRIENDS" maxlength="20" /><button id="join">
+            Join LAN room
+          </button>
+          <p id="lanInfo">
+            Everyone opens this computer’s LAN address on the same Wi-Fi, then
+            uses the same room code.
+          </p>
+          <details id="peerPanel">
+            <summary>Direct peer connection / GitHub Pages</summary>
+            <p>
+              Same network, no server. Host creates an invitation; guest pastes
+              it and creates an answer; host accepts the answer.
+            </p>
+            <label for="peerAddress"
+              >Your LAN IP (optional, if automatic pairing fails)</label
+            ><input id="peerAddress" placeholder="e.g. 192.168.1.20" /><button
+              id="peerInvite"
+            >
+              Host: create invitation</button
+            ><label for="peerIn">Paste invitation or answer</label
+            ><textarea id="peerIn" rows="3" spellcheck="false"></textarea>
+            <div class="peer-actions">
+              <button id="peerAnswer">Guest: create answer</button
+              ><button id="peerAccept">Host: accept answer</button>
+            </div>
+            <label for="peerOut">Your connection code</label
+            ><textarea id="peerOut" rows="3" readonly></textarea
+            ><button id="peerCopy">Copy code</button>
+            <p id="peerStatus" role="status">
+              Keep both pages open. One invitation per guest.
+            </p>
+          </details>
+          <button id="leave" hidden>Leave room</button>
+        </div>
+        <div class="controls-preview">
+          <span><kbd>W A S D</kbd> Move</span
+          ><span><kbd>Mouse</kbd> Look & fire</span
+          ><span><kbd>1–0 − =</kbd> Tools</span><span><kbd>F</kbd> Fly</span>
+        </div>
+      </section>
+      <footer>
+        <span>Every world is temporary. Make this one count.</span
+        ><span>Procedural worlds / physical destruction</span>
+      </footer>
+    </main>
+    <div id="hud" hidden>
+      <div class="world-location">
+        <span id="locationType">The highlands</span>
+        <h2 id="locationName">Briarwatch citadel</h2>
+        <span id="seedLabel">Afterglow</span>
+      </div>
+      <div class="score-panel">
+        <span id="scoreLabel">Destruction score</span
+        ><strong id="score">0</strong><span id="timer">Take your time.</span>
+      </div>
+      <div id="crosshair"><i></i><i></i><i></i><i></i></div>
+      <div id="hitInfo"></div>
+      <div id="toast" role="status"></div>
+      <div id="combo"></div>
+      <div class="bottom-hud">
+        <div class="objective">
+          <span id="objectiveLabel">Leave your mark</span
+          ><strong id="objectiveName">Bring down a landmark</strong>
+          <div class="progress"><i id="progress"></i></div>
+          <span id="objectiveProgress">0% dismantled</span>
+        </div>
+        <div class="arsenal" id="arsenal"></div>
+        <div class="telemetry">
+          <span id="movement">On foot</span
+          ><span id="armedCount">0 charges · X detonate</span
+          ><span id="crystalCount">0 crystals</span><span id="fps">60 fps</span
+          ><button id="mapButton">Map <kbd>M</kbd></button>
+        </div>
+      </div>
+      <div class="tool-caption">
+        <strong id="toolName">Impact rocket</strong><span id="toolDetail"></span
+        ><i id="cooldown"></i>
+      </div>
+      <div class="play-hint">
+        WASD move <b>·</b> Shift sprint <b>·</b> Space jump <b>·</b> F fly
+        <b>·</b> X detonate charges <b>·</b> R surface <b>·</b> Esc menu
+      </div>
+      <div id="weaponView">
+        <div class="barrel"></div>
+        <div class="receiver"><i></i><span>MB / 01</span></div>
+        <div class="grip"></div>
+      </div>
+    </div>
+    <div id="map" class="modal" hidden>
+      <section>
+        <button class="close" id="closeMap" aria-label="Close map">×</button
+        ><span class="edition">Field guide</span>
+        <h2>The highlands</h2>
+        <p>Pick a landmark to travel there.</p>
+        <div id="mapLocations"></div>
+        <p class="map-note">
+          All landmarks can be dismantled. The ground is your canvas.
+        </p>
+      </section>
+    </div>
+    <div id="results" class="modal" hidden>
+      <section>
+        <span class="edition">Demolition run complete</span>
+        <h2>Beautiful chaos.</h2>
+        <p>You left quite an impression.</p>
+        <strong id="finalScore">0</strong>
+        <p id="finalDetail"></p>
+        <button id="again" class="primary">One more world ↗</button
+        ><button id="keepPlaying">Keep exploring</button>
+      </section>
+    </div>
+    <div id="loading">
+      <span class="loading-mark">✳</span>
+      <p id="loadingText">Raising castles. Laying foundations.</p>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
