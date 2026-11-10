@@ -292,3 +292,62 @@ test("room assigns eight unique avatars and preserves identity in snapshots and 
   session.handle("0", { type: "reset", seed: "NEXT" });
   assert.equal(session.players.get("3").avatar, 3);
 });
+
+test("rotated rubble is targetable at its physical position and blocks shots behind it", async () => {
+  const { Vector3, Quaternion } = await import("three");
+  const { raycastRubble, nearestHit, rubbleSurvivors } =
+    await import("../src/rubble.js");
+  const rotation = new Quaternion().setFromAxisAngle(
+    new Vector3(0, 1, 0),
+    Math.PI / 2,
+  );
+  const d = {
+    body: {
+      translation: () => ({ x: 0, y: 4, z: 5 }),
+      rotation: () => rotation,
+    },
+    age: 0,
+    blocks: [
+      { offset: new Vector3(2, 0, 0) },
+      { offset: new Vector3(-2, 0, 0) },
+    ],
+  };
+  const hit = raycastRubble([d], { x: 0, y: 4, z: 0 }, { x: 0, y: 0, z: 1 });
+  assert.ok(hit && hit.distance > 2.6 && hit.distance < 2.7);
+  assert.equal(hit.blockIndex, 0);
+  assert.equal(nearestHit({ distance: 8, id: 1 }, hit), hit);
+  assert.equal(
+    raycastRubble([d], { x: 1, y: 4, z: 0 }, { x: 0, y: 0, z: 1 }),
+    null,
+  );
+  assert.equal(rubbleSurvivors(d, hit, 0.05).length, 1);
+  assert.equal(rubbleSurvivors(d, { x: 0, y: 4, z: 5 }, 10).length, 0);
+});
+
+test("new districts and temple steps are above their excavatable terrain", () => {
+  for (const seed of ["AFTERGLOW", "HILLS", "TEST"]) {
+    const w = generateWorld(seed);
+    ensureRegion(w, 1, 0);
+    ensureRegion(w, 0, -1);
+    const buried = w.blocks.filter(
+      (b) =>
+        w.structures[b.structure].type !== "Crystal grotto" &&
+        w.terrain.at(b.x * 0.75, b.y * 0.75, b.z * 0.75),
+    );
+    assert.equal(
+      buried.length,
+      0,
+      seed + " has masonry embedded in the terrain",
+    );
+  }
+});
+
+test("short projectile segments cannot skip a one-voxel wall", () => {
+  const b = { id: 0, x: 0, y: 0, z: 0, alive: true };
+  const w = { blocks: [b], grid: new Map([[key(0, 0, 0), 0]]) };
+  for (const start of [-0.4, -0.8, -1.2]) {
+    const hit = raycast(w, { x: start, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, 3);
+    assert.equal(hit.id, 0);
+    assert.ok(Math.abs(hit.x + 0.375) < 1e-8);
+  }
+});

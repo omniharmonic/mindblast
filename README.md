@@ -54,10 +54,10 @@ Every tool has a 3D first-person model with metallic surfaces, gloved hands, sig
 
 - Seeded castles, cathedrals, aqueducts, houses, manors, pagodas, observatories, windmills, amphitheatres, foundries, lighthouses, temples, clock towers, greenhouses, markets, fortresses, libraries, ziggurats, viaducts, and bathhouses. Dimensions, heights, arrangements, interiors, and furnishings vary. Buildings have doors, floor openings, and stairs.
 - 0.75 m structural voxels and 1.5 m excavatable terrain. Procedural underground chambers, tunnels, entrances, and crystal formations continue into new regions.
-- Exact grid traversal resolves shots against terrain and building faces. Terrain excavation can undermine foundations.
+- Exact grid traversal resolves shots against terrain and building faces; rotated-box tests also target fallen rubble at its current position. Projectiles check their full movement segment each frame, including close-range impacts. Terrain excavation can undermine foundations.
 - Material-dependent finite support propagation starts at grounded foundations. Vertical compression carries farther than lateral bonds, so unsupported spans shed sections instead of hanging indefinitely. This is a gameplay approximation, not engineering-grade stress analysis.
-- Detached connected sections become Rapier rigid bodies with exact merged cuboid colliders. Heavy sections receive less acceleration from blast impulses, fall under gravity, collide, and fracture further on hard impacts. Solver iterations are increased for stability. Transient rubble is capped and eventually fades to preserve performance; it does not become permanent terrain.
-- Districts are requested ahead of the viewing direction. Terrain streams farther than the 105 m fog cutoff, keeping generation beyond normal visibility. Existing nearby chunks and trees stay in place during expansion. Fast teleportation can still require a brief load; world data grows as exploration continues.
+- Detached connected sections become Rapier rigid bodies with exact merged cuboid colliders. Heavy sections receive less acceleration from blast impulses, fall under gravity, collide, and fracture further on hard impacts. Solver iterations are increased for stability. Rubble can be shot and broken down again; its remaining fragments retain their orientation and physics. Transient rubble is capped and eventually fades to preserve performance; it does not become permanent terrain.
+- Districts are requested ahead of the viewing direction. Terrain streams farther than the 105 m fog cutoff, keeping generation beyond normal visibility. Nearby terrain meshes are refreshed when new foundations flatten the ground. Mountain backdrops that intersected new districts have been removed; hills are part of the excavatable terrain. Fast teleportation can still require a brief load; world data grows as exploration continues.
 - World damage, charges, settings, and score are synchronized. Decorative rubble motion is simulated locally and may differ between players.
 - Photo-derived diffuse, normal, and roughness textures are bundled; see [texture credits](public/textures/CREDITS.md). The visual style remains voxel-based rather than fully photorealistic.
 
@@ -81,7 +81,7 @@ The diagnostics surface `window.__mindblast` exists for repeatable local checks.
 ## Source layout
 
 - `src/world.js`, `architecture.js`, `terrain.js`: deterministic geometry, damage, support, and caves.
-- `src/main.js`, `fragments.js`, `terrain-renderer.js`, `materials.js`: rendering, physics, controls, and streaming.
+- `src/main.js`, `fragments.js`, `rubble.js`, `terrain-renderer.js`, `materials.js`: rendering, physics, controls, and streaming.
 - `src/session.js`, `peer.js`, `server.mjs`: shared room authority, WebRTC, and Node/WebSocket transport.
 - `tests/`: engine, network, and browser checks.
 

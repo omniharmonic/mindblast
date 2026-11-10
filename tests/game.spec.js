@@ -315,3 +315,79 @@ test("slow texture downloads do not block the playable world", async ({
   expect(pending.length).toBeGreaterThan(0);
   for (const route of pending) await route.abort();
 });
+
+test("fallen rubble stops shots and can be destroyed again", async ({
+  page,
+}) => {
+  await ready(page);
+  await page.locator("#play").click();
+  await page.keyboard.press("5");
+  await page.evaluate(() =>
+    window.__mindblast.blast({ x: 12, y: 2, z: 9.75 }, 0),
+  );
+  const hit = await page.evaluate(() => {
+    const game = window.__mindblast;
+    for (const target of game.rubbleTargets)
+      for (const direction of [
+        { x: 0, y: -1, z: 0 },
+        { x: 1, y: 0, z: 0 },
+        { x: -1, y: 0, z: 0 },
+        { x: 0, y: 0, z: 1 },
+      ]) {
+        const origin = {
+          x: target.x - direction.x * 4,
+          y: target.y - direction.y * 4,
+          z: target.z - direction.z * 4,
+        };
+        if (!game.trace(origin, direction, 5)?.rubble) continue;
+        game.teleport(origin.x, origin.y, origin.z);
+        game.aimAt(target.x, target.y, target.z);
+        document
+          .querySelector("#game")
+          .dispatchEvent(
+            new PointerEvent("pointerdown", { button: 0, bubbles: true }),
+          );
+        document
+          .querySelector("#game")
+          .dispatchEvent(
+            new PointerEvent("pointerup", { button: 0, bubbles: true }),
+          );
+        return game.state.shotDebug.hit;
+      }
+    return null;
+  });
+  expect(hit?.rubble).toBe(true);
+  await expect
+    .poll(async () => (await state(page)).rubbleDestroyed)
+    .toBeGreaterThan(0);
+});
+
+test("a shot fired against a nearby wall hits its front face", async ({
+  page,
+}) => {
+  await ready(page);
+  await page.locator("#play").click();
+  await page.keyboard.press("f");
+  await page.keyboard.press("5");
+  await page.waitForFunction(() => window.__mindblast.state.cooldown === 0);
+  const distance = await page.evaluate(() => {
+    const game = window.__mindblast,
+      hit = game.trace({ x: 8, y: 3, z: 30 }, { x: 0, y: 0, z: -1 });
+    if (!hit) throw Error("Missing test wall");
+    game.teleport(hit.x, hit.y, hit.z + 0.2);
+    game.aimAt(hit.x, hit.y, hit.z - 0.5);
+    document
+      .querySelector("#game")
+      .dispatchEvent(
+        new PointerEvent("pointerdown", { button: 0, bubbles: true }),
+      );
+    document
+      .querySelector("#game")
+      .dispatchEvent(
+        new PointerEvent("pointerup", { button: 0, bubbles: true }),
+      );
+    return game.state.shotDebug.hit.distance;
+  });
+  expect(distance).toBeLessThan(0.3);
+  await expect.poll(async () => (await state(page)).removed).toBeGreaterThan(0);
+});

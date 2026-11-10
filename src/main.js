@@ -1,3 +1,4 @@
+import { raycastRubble, rubbleSurvivors, nearestHit } from "./rubble.js";
 import {
   WeaponView,
   buildCharacter,
@@ -183,8 +184,8 @@ function buildEnvironment(seed) {
   const trees = new THREE.InstancedMesh(treeGeo, treeMat, 900);
   let n = 0;
   for (let i = 0; i < 300; i++) {
-    const x = position.x + (rng() - 0.5) * 430,
-      z = position.z + (rng() - 0.5) * 400;
+    const x = (rng() - 0.5) * 240,
+      z = (rng() - 0.5) * 240;
     if (
       world.structures.some(
         (s) =>
@@ -234,27 +235,8 @@ function buildEnvironment(seed) {
   rocks.castShadow = true;
   rocks.receiveShadow = true;
   environment.add(rocks);
-  const mountainMat = new THREE.MeshStandardMaterial({
-    color: "#9baa9e",
-    flatShading: true,
-    roughness: 1,
-  });
-  for (let i = 0; i < 20; i++) {
-    const angle = (i / 20) * Math.PI * 2,
-      dist = 270 + rng() * 80,
-      h = 25 + rng() * 75;
-    const mountain = new THREE.Mesh(
-      new THREE.ConeGeometry(45 + rng() * 55, h, 5 + rng() * 3),
-      mountainMat,
-    );
-    mountain.position.set(
-      Math.cos(angle) * dist,
-      h / 2 - 6,
-      Math.sin(angle) * dist,
-    );
-    mountain.rotation.y = rng() * 6;
-    environment.add(mountain);
-  }
+  // Hills belong to the destructible terrain; decorative mountain meshes
+  // would intersect future districts without participating in collision.
   // A few sunlit clouds above the distant ridge.
   const clouds = new THREE.Group();
   for (let i = 0; i < 14; i++) {
@@ -288,7 +270,7 @@ function addDistrictNature(rx, rz) {
   for (let i = 0; i < 120; i++) {
     const x = rx * 240 + (rng() - 0.5) * 240,
       z = rz * 240 + (rng() - 0.5) * 240;
-    if (Math.abs(x) < 215 && Math.abs(z) < 200) continue;
+    if (Math.abs(x) < 120 && Math.abs(z) < 120) continue;
     if (
       world.structures.some(
         (s) =>
@@ -480,6 +462,7 @@ function expandRegion(rx, rz) {
   // Existing chunks remain intact; new foundations are beyond the fog.
   terrainRenderer.center = "";
   terrainRenderer.stream(position);
+  terrainRenderer.refreshPads(added);
   rebuildField();
   refreshMap();
 
@@ -606,14 +589,14 @@ function fracture(ids, point, force, collapse = false) {
   }
 }
 let impactFractures = 0;
-function splitImpact(d) {
+function splitImpact(d, survivors = d.blocks, impact = true) {
   const i = debris.indexOf(d);
   if (i < 0) return;
   const p = d.body.translation(),
     q = d.body.rotation(),
     v = d.body.linvel(),
     rotation = new THREE.Quaternion(q.x, q.y, q.z, q.w);
-  const pieces = d.blocks.map((b) => ({
+  const pieces = survivors.map((b) => ({
     ...b,
     pos: b.offset
       .clone()
@@ -622,7 +605,8 @@ function splitImpact(d) {
   }));
   physics.removeRigidBody(d.body);
   debris.splice(i, 1);
-  impactFractures++;
+  if (impact) impactFractures++;
+  const inverseRotation = rotation.clone().invert();
   for (let i = 0; i < pieces.length; i += 8) {
     while (debris.length >= settings.debris) {
       const old = debris.shift();
@@ -635,6 +619,7 @@ function splitImpact(d) {
     const body = physics.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
         .setTranslation(center.x, center.y, center.z)
+        .setRotation(q)
         .setLinvel(
           v.x + (Math.random() - 0.5) * 2,
           Math.max(1, v.y),
@@ -643,30 +628,44 @@ function splitImpact(d) {
         .setAngularDamping(0.3)
         .setCcdEnabled(true),
     );
-    for (const b of blocks)
+    for (const b of blocks) {
+      const offset = b.pos.clone().sub(center).applyQuaternion(inverseRotation);
       physics.createCollider(
         RAPIER.ColliderDesc.cuboid(0.35, 0.35, 0.35)
-          .setTranslation(
-            b.pos.x - center.x,
-            b.pos.y - center.y,
-            b.pos.z - center.z,
-          )
+          .setTranslation(offset.x, offset.y, offset.z)
           .setFriction(0.85)
           .setRestitution(0.1),
         body,
       );
+    }
     debris.push({
       body,
       age: 0,
       lastVY: 0,
       fractured: true,
       blocks: blocks.map((b) => ({
-        offset: b.pos.clone().sub(center),
+        offset: b.pos.clone().sub(center).applyQuaternion(inverseRotation),
         color: b.color,
         material: b.material,
       })),
     });
   }
+}
+let rubbleDestroyed = 0;
+function damageRubble(point, radius) {
+  for (const d of [...debris]) {
+    if (!debris.includes(d)) continue;
+    const survivors = rubbleSurvivors(d, point, radius);
+    if (survivors.length === d.blocks.length) continue;
+    rubbleDestroyed += d.blocks.length - survivors.length;
+    splitImpact(d, survivors, false);
+  }
+}
+function shotHit(origin, direction, max = 350) {
+  return nearestHit(
+    raycast(world, origin, direction, max),
+    raycastRubble(debris, origin, direction, max),
+  );
 }
 function burst(point, wi, radius = WEAPONS[wi].radius * settings.radius) {
   const w = WEAPONS[wi],
@@ -791,6 +790,7 @@ function showDestruction(
   for (const k of changed) rebuildColumn(k);
   // Remote blasts also need terrain contacts until their debris settles.
   terrainRenderer.addPhysicsFocus(point);
+  damageRubble(point, blastRadius);
   fracture(result.hit, point, blastForce);
   fracture(result.fallen, point, blastForce, true);
   burst(point, wi, blastRadius);
@@ -884,8 +884,17 @@ function fire() {
   camera.rotation.set(pitch, yaw, 0);
   camera.updateMatrixWorld();
   camera.getWorldDirection(dir);
-  const hit = raycast(world, camera.position, dir, 350);
-  shotDebug.hit = hit;
+  const hit = shotHit(camera.position, dir, 350);
+  shotDebug.hit = hit
+    ? {
+        x: hit.x,
+        y: hit.y,
+        z: hit.z,
+        distance: hit.distance,
+        rubble: !!hit.debris,
+        id: hit.id,
+      }
+    : null;
   if (!hit) {
     toast("Aim at a structure or the ground");
     return;
@@ -903,7 +912,7 @@ function fire() {
     else addCharge(target);
     return;
   }
-  if (wi === 3) target.y -= 3;
+
   if (wi === 9) {
     const beam = new THREE.Mesh(
       new THREE.CylinderGeometry(0.5, 0.5, 100, 12),
@@ -927,7 +936,7 @@ function fire() {
   const start =
     wi === 5
       ? target.clone().add(new THREE.Vector3(-20, 65, -10))
-      : camera.position.clone().addScaledVector(dir, 1.2);
+      : camera.position.clone();
   mesh.position.copy(start);
   scene.add(mesh);
   projectiles.push({
@@ -1708,13 +1717,22 @@ function tick(now) {
     for (let i = projectiles.length - 1; i >= 0; i--) {
       const p = projectiles[i];
       p.age += dt;
-      p.mesh.position.lerpVectors(
-        p.start,
-        p.target,
-        Math.min(1, p.age / p.life),
+      const next = p.start.clone().lerp(p.target, Math.min(1, p.age / p.life));
+      const travel = next.clone().sub(p.mesh.position),
+        length = travel.length();
+      const collision =
+        length > 0
+          ? shotHit(p.mesh.position, travel.divideScalar(length), length + 1e-5)
+          : null;
+      p.mesh.position.copy(
+        collision
+          ? new THREE.Vector3(collision.x, collision.y, collision.z)
+          : next,
       );
-      if (p.age >= p.life) {
-        detonate(p.target, p.weapon);
+      if (collision || p.age >= p.life) {
+        const impact = p.mesh.position.clone();
+        if (p.weapon === 3) impact.y -= 3;
+        detonate(impact, p.weapon);
         scene.remove(p.mesh);
         p.mesh.geometry.dispose();
         p.mesh.material.dispose();
@@ -1809,14 +1827,16 @@ function tick(now) {
           world.structures[0],
         );
       camera.getWorldDirection(dir);
-      const hit = raycast(world, camera.position, dir);
+      const hit = shotHit(camera.position, dir);
       if (hit?.id != null)
         nearest = world.structures[world.blocks[hit.id].structure];
       updateHUD();
       $("hitInfo").textContent =
         hit?.id != null
           ? `${world.blocks[hit.id].material} / ${Math.round(hit.distance)} m`
-          : "";
+          : hit?.debris
+            ? `Rubble / ${Math.round(hit.distance)} m`
+            : "";
     }
     if (socket?.readyState === WebSocket.OPEN && netId)
       socket.send(
@@ -1912,6 +1932,7 @@ window.__mindblast = {
         life: p.life,
         weapon: p.weapon,
       })),
+      rubbleDestroyed,
       impactFractures,
       largeFragments: debris.filter((d) => d.blocks.length > 30).length,
     };
@@ -1947,6 +1968,31 @@ window.__mindblast = {
   },
   setRemaining(seconds) {
     remaining = seconds;
+  },
+  trace(origin, direction, max = 350) {
+    const hit = shotHit(origin, direction, max);
+    return hit
+      ? {
+          x: hit.x,
+          y: hit.y,
+          z: hit.z,
+          distance: hit.distance,
+          rubble: !!hit.debris,
+          id: hit.id,
+        }
+      : null;
+  },
+  get rubbleTargets() {
+    return debris.flatMap((d) => {
+      const q = d.body.rotation(),
+        p = d.body.translation();
+      return d.blocks.slice(0, 1).map((b) =>
+        b.offset
+          .clone()
+          .applyQuaternion(new THREE.Quaternion(q.x, q.y, q.z, q.w))
+          .add(new THREE.Vector3(p.x, p.y, p.z)),
+      );
+    });
   },
   get debrisSample() {
     return debris.slice(0, 3).map((d) => ({ ...d.body.translation() }));

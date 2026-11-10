@@ -308,7 +308,15 @@ export function buildArchitecture(ctx, type, cx, cz, rng) {
       "sand",
     );
     for (let i = 0; i < 4; i++)
-      box(cx - 4 - i, -i, cz + D / 2 + i, 9 + i * 2, 1, 1, "trim");
+      box(
+        cx - 4 - i,
+        Math.max(0, 1 - i),
+        cz + D / 2 + i,
+        9 + i * 2,
+        1,
+        1,
+        "trim",
+      );
     box(cx - 2, 2, cz - 2, 5, 5, 5, "crystal");
   } else if (type === "Greenhouse") {
     const W = n(14, 22),

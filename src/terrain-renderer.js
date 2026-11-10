@@ -298,6 +298,21 @@ export class TerrainRenderer {
     for (let i = 0; i < 3 && this.queue.length; i++)
       this.build(...this.queue.shift());
   }
+  refreshPads(structures) {
+    for (const key of [...this.chunks.keys()]) {
+      const [x, y, z] = key.split(",").map(Number);
+      if (
+        structures.some(
+          (s) =>
+            (x + 1) * CELL * CHUNK >= s.bounds.minX * 0.75 - 4 &&
+            x * CELL * CHUNK <= s.bounds.maxX * 0.75 + 4 &&
+            (z + 1) * CELL * CHUNK >= s.bounds.minZ * 0.75 - 4 &&
+            z * CELL * CHUNK <= s.bounds.maxZ * 0.75 + 4,
+        )
+      )
+        this.build(x, y, z);
+    }
+  }
   update(keys) {
     const dirty = new Set();
     for (const k of keys) {
