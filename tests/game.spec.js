@@ -292,7 +292,8 @@ test("slow texture downloads do not block the playable world", async ({
   await page.route("**/textures/**", (route) => {
     pending.push(route);
   });
-  await ready(page);
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => window.__mindblast?.state.ready);
   expect((await state(page)).ready).toBe(true);
   expect(pending.length).toBeGreaterThan(0);
   for (const route of pending) await route.abort();
