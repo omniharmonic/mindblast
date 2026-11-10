@@ -284,3 +284,16 @@ test("static-host WebRTC invitation and answer synchronize terrain and charges",
     await ctx.close();
   }
 });
+
+test("slow texture downloads do not block the playable world", async ({
+  page,
+}) => {
+  const pending = [];
+  await page.route("**/textures/**", (route) => {
+    pending.push(route);
+  });
+  await ready(page);
+  expect((await state(page)).ready).toBe(true);
+  expect(pending.length).toBeGreaterThan(0);
+  for (const route of pending) await route.abort();
+});

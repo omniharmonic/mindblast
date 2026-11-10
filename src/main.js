@@ -1837,8 +1837,15 @@ function tick(now) {
 }
 async function init() {
   try {
-    await Promise.all([RAPIER.init(), materials.ready]);
+    await Promise.all([
+      RAPIER.init(),
+      Promise.race([
+        materials.ready,
+        new Promise((resolve) => setTimeout(resolve, 1800)),
+      ]),
+    ]);
     buildWorld(new URLSearchParams(location.search).get("seed") || "AFTERGLOW");
+    materials.ready.then(() => terrainRenderer?.refreshMaterials());
     camera.position.set(40, 24, 51);
     camera.lookAt(-9, 7, 0);
     renderer.compile(scene, camera);

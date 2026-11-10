@@ -76,6 +76,13 @@ export class TerrainRenderer {
       (c) => new THREE.Color(c),
     );
   }
+  refreshMaterials() {
+    this.renderMaterials?.forEach((material, i) => {
+      material.copy(this.materials[i]);
+      material.vertexColors = true;
+      material.needsUpdate = true;
+    });
+  }
   build(cx, cy, cz) {
     const k = `${cx},${cy},${cz}`,
       old = this.chunks.get(k);
