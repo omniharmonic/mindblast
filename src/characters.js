@@ -91,7 +91,8 @@ export function buildWeapon(index, color = 0xf6ce83) {
   );
   sight.position.set(0, 0.205, 0.05);
   root.add(sight);
-  box(root, [0.07, 0.025, 0.08], [0, 0.24, -0.02], glow);
+  box(root, [0.02, 0.06, 0.025], [0, heavy ? 0.17 : 0.105, -0.5], edge);
+  box(root, [0.025, 0.018, 0.025], [0, heavy ? 0.205 : 0.14, -0.5], glow);
   const barrels = index === 1 ? [-0.075, 0.075] : [0];
   for (const x of barrels) {
     tube(
