@@ -1,7 +1,7 @@
 import * as THREE from "three";
 const loader = new THREE.TextureLoader();
 const url = (name) => `${import.meta.env.BASE_URL}textures/${name}`;
-function procedural(kind) {
+export function procedural(kind) {
   const c = document.createElement("canvas");
   c.width = c.height = 256;
   const ctx = c.getContext("2d");
@@ -17,7 +17,69 @@ function procedural(kind) {
     ctx.fillStyle = `rgba(${n},${n},${n},.2)`;
     ctx.fillRect(rand() * 256, rand() * 256, 1 + rand() * 4, 1 + rand() * 4);
   }
-  if (kind === "wood") {
+  if (kind === "crystal") {
+    ctx.fillStyle = "#a4c3cf";
+    ctx.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 60; i++) {
+      const x = rand() * 256,
+        y = rand() * 256;
+      ctx.fillStyle = `rgba(${160 + rand() * 95},235,255,${0.1 + rand() * 0.35})`;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + 15 + rand() * 40, y - 50);
+      ctx.lineTo(x + rand() * 30, y + 90);
+      ctx.fill();
+    }
+    for (let i = 0; i < 90; i++) {
+      ctx.strokeStyle = `rgba(255,255,255,${rand() * 0.45})`;
+      ctx.lineWidth = 0.5;
+      const x = rand() * 256,
+        y = rand() * 256;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + rand() * 18, y + 20 + rand() * 75);
+      ctx.stroke();
+    }
+  } else if (kind === "rock") {
+    for (let i = 0; i < 150; i++) {
+      const x = rand() * 256,
+        y = rand() * 256;
+      ctx.strokeStyle = `rgba(45,48,42,${0.1 + rand() * 0.35})`;
+      ctx.lineWidth = 0.5 + rand() * 2;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + rand() * 35, y + rand() * 10);
+      ctx.lineTo(x + rand() * 55, y + rand() * 35);
+      ctx.stroke();
+    }
+    for (let i = 0; i < 90; i++) {
+      ctx.fillStyle = `rgba(66,86,36,${rand() * 0.24})`;
+      ctx.beginPath();
+      ctx.ellipse(
+        rand() * 256,
+        rand() * 256,
+        rand() * 15,
+        rand() * 9,
+        rand() * 6,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    }
+  } else if (kind === "foliage") {
+    ctx.fillStyle = "#607d55";
+    ctx.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 1900; i++) {
+      const x = rand() * 256,
+        y = rand() * 256;
+      ctx.strokeStyle = rand() > 0.5 ? "#799368" : "#4a654c";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + 4 + rand() * 9, y - 3 - rand() * 8);
+      ctx.stroke();
+    }
+  } else if (kind === "wood") {
     for (let i = 0; i < 130; i++) {
       ctx.strokeStyle = `rgba(40,30,20,${rand() * 0.3})`;
       ctx.beginPath();
@@ -62,6 +124,7 @@ export const palette = {
 export function createMaterials() {
   const stone = procedural("stone"),
     wood = procedural("wood"),
+    crystal = procedural("crystal"),
     materials = {};
   for (const [name, c] of Object.entries(palette)) {
     const m = new THREE.MeshStandardMaterial({
@@ -72,12 +135,19 @@ export function createMaterials() {
       bumpScale: 0.08,
     });
     if (name === "glass") {
+      m.transparent = true;
+      m.opacity = 0.48;
+      m.depthWrite = false;
       m.emissive = new THREE.Color("#24484b");
       m.emissiveIntensity = 0.22;
     }
     if (name === "crystal") {
       m.emissive = new THREE.Color("#77d6ea");
-      m.emissiveIntensity = 1.5;
+      m.map = crystal;
+      m.bumpMap = crystal;
+      m.bumpScale = 0.015;
+      m.emissiveMap = crystal;
+      m.emissiveIntensity = 0.45;
       m.roughness = 0.15;
       m.metalness = 0.35;
     }
@@ -147,7 +217,7 @@ export class BlockField {
     this.geometry = cube;
     for (const [mat, list] of groups) {
       const mesh = new THREE.InstancedMesh(
-        mat === "crystal" ? new THREE.OctahedronGeometry(0.53) : cube,
+        mat === "crystal" ? new THREE.OctahedronGeometry(0.5) : cube,
         materials[mat] || materials.stone,
         list.length,
       );
@@ -158,7 +228,10 @@ export class BlockField {
         const b = list[i];
         o.position.set(b.x * 0.75, b.y * 0.75, b.z * 0.75);
         o.scale.setScalar(b.alive ? 1 : 0);
-        if (mat === "crystal") o.scale.set(0.7, b.alive ? 1.5 : 0, 0.7);
+        if (mat === "crystal") {
+          o.scale.set(0.72, b.alive ? 1.15 + b.shade * 0.25 : 0, 0.72);
+          o.rotation.set(0, b.shade * Math.PI, 0);
+        } else o.rotation.set(0, 0, 0);
         o.updateMatrix();
         mesh.setMatrixAt(i, o.matrix);
         mesh.setColorAt(
@@ -189,4 +262,16 @@ export class BlockField {
     }
     this.geometry.dispose();
   }
+}
+
+export function natureMaterial(kind) {
+  const map = procedural(kind);
+  if (kind === "foliage") map.repeat.set(3, 4);
+  return new THREE.MeshStandardMaterial({
+    map,
+    bumpMap: map,
+    bumpScale: kind === "foliage" ? 0.035 : 0.2,
+    roughness: kind === "rock" ? 0.92 : 1,
+    color: kind === "wood" ? 0x8f7561 : kind === "rock" ? 0x858978 : 0xffffff,
+  });
 }

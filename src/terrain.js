@@ -21,8 +21,19 @@ function noise(x, z, s) {
 export function terrainLevel(x, z, seed) {
   return (
     Math.round(
-      (noise(x / 45, z / 45, seed) - 0.5) * 11 +
-        (noise(x / 15, z / 15, seed + 13) - 0.5) * 4,
+      (noise(x / 75, z / 75, seed) - 0.5) * 15 +
+        (noise(x / 24, z / 24, seed + 13) - 0.5) * 6 +
+        (noise(x / 7, z / 7, seed + 41) - 0.5) * 1.5 +
+        Math.max(
+          0,
+          1 - Math.abs(noise(x / 110, z / 110, seed + 91) - 0.5) * 5,
+        ) *
+          4 -
+        Math.max(
+          0,
+          1 - Math.abs(noise(x / 48, z / 48, seed + 211) - 0.5) * 12,
+        ) *
+          3,
     ) - 1
   );
 }
@@ -110,11 +121,23 @@ export class Terrain {
     let c = this.columns.get(k);
     if (c) return c;
     let h = terrainLevel(x, z, this.seed);
-    for (const p of this.pads)
+    const natural = h;
+    for (const p of this.pads) {
       if (x >= p.minX && x <= p.maxX && z >= p.minZ && z <= p.maxZ) {
         h = p.h;
         break;
       }
+      const distance = Math.hypot(
+        Math.max(p.minX - x, 0, x - p.maxX),
+        Math.max(p.minZ - z, 0, z - p.maxZ),
+      );
+      if (distance < 8) {
+        const blended = Math.round(
+          p.h + (natural - p.h) * smooth(distance / 8),
+        );
+        if (Math.abs(blended - p.h) < Math.abs(h - p.h)) h = blended;
+      }
+    }
     const caves = [];
     const rx = Math.floor(x / 64),
       rz = Math.floor(z / 64);

@@ -31,9 +31,10 @@ export function raycastRubble(debris, origin, direction, max = 350) {
       (!ray.intersectBox(d.bounds, hit) || hit.distanceTo(o) > distance)
     )
       continue;
-    const half = HALF * (d.age > 21 ? Math.max(0, (24 - d.age) / 3) : 1);
+
     for (let i = 0; i < d.blocks.length; i++) {
-      const b = d.blocks[i];
+      const b = d.blocks[i],
+        half = (b.size || 0.75) * 0.4875;
       box.min.copy(b.offset).addScalar(-half);
       box.max.copy(b.offset).addScalar(half);
       const inside = box.containsPoint(o);
@@ -63,12 +64,37 @@ export function rubbleSurvivors(d, point, radius) {
     .applyQuaternion(q.invert());
   // Sphere/box intersection also catches the face of a fragment at an impact point.
   return d.blocks.filter((b) => {
-    const x = Math.max(0, Math.abs(blast.x - b.offset.x) - HALF),
-      y = Math.max(0, Math.abs(blast.y - b.offset.y) - HALF),
-      z = Math.max(0, Math.abs(blast.z - b.offset.z) - HALF);
+    const half = (b.size || 0.75) * 0.4875;
+    const x = Math.max(0, Math.abs(blast.x - b.offset.x) - half),
+      y = Math.max(0, Math.abs(blast.y - b.offset.y) - half),
+      z = Math.max(0, Math.abs(blast.z - b.offset.z) - half);
     return x * x + y * y + z * z > radius * radius;
   });
 }
 export function nearestHit(a, b) {
   return !a ? b : !b ? a : a.distance <= b.distance ? a : b;
+}
+
+// Conserve volume: repeat blasts subdivide masonry instead of erasing debris.
+export function shatterRubble(d, point, radius) {
+  const untouched = new Set(rubbleSurvivors(d, point, radius));
+  let changed = 0;
+  const blocks = d.blocks.flatMap((b) => {
+    const size = b.size || 0.75;
+    if (untouched.has(b) || size <= 0.375) return [b];
+    changed++;
+    const children = [];
+    for (const x of [-1, 1])
+      for (const y of [-1, 1])
+        for (const z of [-1, 1])
+          children.push({
+            ...b,
+            size: size / 2,
+            offset: b.offset
+              .clone()
+              .add(new Vector3(x, y, z).multiplyScalar(size / 4)),
+          });
+    return children;
+  });
+  return { blocks, changed };
 }

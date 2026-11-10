@@ -185,6 +185,17 @@ export class TerrainRenderer {
       this.syncCollider(chunk, cx, cz);
     }
   }
+  physicsReadyAt(point) {
+    const x = Math.floor(point.x / (CELL * CHUNK)),
+      z = Math.floor(point.z / (CELL * CHUNK));
+    let ground = false;
+    for (let y = -2; y <= 1; y++) {
+      const chunk = this.chunks.get(`${x},${y},${z}`);
+      if (!chunk) return false;
+      ground ||= !!chunk.collider;
+    }
+    return ground;
+  }
   syncCollider(chunk, x, z) {
     if (chunk.empty) return;
     const near =

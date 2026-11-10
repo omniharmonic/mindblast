@@ -38,15 +38,15 @@ export function buildArchitecture(ctx, type, cx, cz, rng) {
           )
             continue;
           const door =
-            b === D - 1 &&
+            (b === D - 1 || b === 0) &&
             a >= Math.floor(W / 2) - 1 &&
             a <= Math.floor(W / 2) + 1 &&
             y < 4;
           const window =
             y % floorH >= 2 &&
             y % floorH <= 4 &&
-            (((b === 0 || b === D - 1) && a % 5 >= 2 && a % 5 <= 3) ||
-              ((a === 0 || a === W - 1) && b % 5 >= 2 && b % 5 <= 3));
+            (((b === 0 || b === D - 1) && a % 4 >= 1 && a % 4 <= 2) ||
+              ((a === 0 || a === W - 1) && b % 4 >= 1 && b % 4 <= 2));
           const stairwell =
             y > 0 && y % floorH === 0 && a < 4 && b < D - 2 && b > D - 10;
           if (door || stairwell) continue;
@@ -54,18 +54,62 @@ export function buildArchitecture(ctx, type, cx, cz, rng) {
             x + a,
             y,
             z + b,
-            window ? "glass" : y % floorH === 0 ? "trim" : mat,
+            window
+              ? y % floorH === 4
+                ? "trim"
+                : "glass"
+              : y % floorH === 0
+                ? "trim"
+                : mat,
           );
         }
+    // Projecting sills, corner quoins and cornices give each facade depth.
+    for (let level = 0; level < H; level += floorH) {
+      for (let a = 1; a < W - 2; a += 4)
+        for (const b of [-1, D]) box(x + a, level + 1, z + b, 2, 1, 1, "trim");
+      for (let b = 1; b < D - 2; b += 4)
+        for (const a of [-1, W]) box(x + a, level + 1, z + b, 1, 1, 2, "trim");
+      for (const a of [0, W - 1])
+        for (const b of [-1, D]) box(x + a, level, z + b, 1, 5, 1, "trim");
+      // A cross wall with a generous central doorway; stairs retain a clear aisle.
+      if (W >= 12 && D >= 13)
+        for (let a = 4; a < W - 1; a++)
+          for (let y = 1; y < floorH; y++) {
+            if (Math.abs(a - Math.floor(W / 2)) <= 1 && y < 4) continue;
+            add(
+              x + a,
+              level + y,
+              z + Math.floor(D / 2),
+              y === 5 ? "wood" : "plaster",
+            );
+          }
+      // Exposed ceiling joists transfer load to the outside walls.
+      for (let b = 3; b < D - 2; b += 4)
+        box(x + 4, level + 5, z + b, W - 5, 1, 1, "wood");
+    }
   };
   const stairs = (x, z, levels, H = 6) => {
-    for (let f = 0; f < levels; f++)
+    for (let f = 0; f < levels; f++) {
       for (let i = 0; i < H; i++) box(x, f * H + i, z + i, 3, 1, 1, "wood");
+      box(x, (f + 1) * H, z + H, 3, 1, 2, "wood");
+    }
   };
   const roof = (x, z, W, D, y, mat = "roof") => {
     for (let k = 0; k < Math.ceil(W / 2); k++)
       for (const a of [k, W - 1 - k])
         box(x + a, y + k, z - 1, 1, 1, D + 2, mat);
+    // Close the gables around attic windows instead of leaving triangular voids.
+    for (let k = 0; k < Math.floor(W / 2); k++)
+      for (let a = k + 1; a < W - k - 1; a++)
+        for (const b of [0, D - 1])
+          add(
+            x + a,
+            y + k,
+            z + b,
+            mat === "glass" || (Math.abs(a - W / 2) < 2 && k >= 1 && k <= 3)
+              ? "glass"
+              : "plaster",
+          );
   };
   const ring = (x, z, r, y, mat = "trim", thick = 1) => {
     for (let a = -r; a <= r; a++)
@@ -82,7 +126,18 @@ export function buildArchitecture(ctx, type, cx, cz, rng) {
             Math.hypot(a, b) >= r - 1 &&
             !(y < 4 && Math.abs(a) < 2 && b > 0)
           )
-            add(x + a, y, z + b, y % 6 === 0 ? "trim" : mat);
+            add(
+              x + a,
+              y,
+              z + b,
+              y % 6 === 0
+                ? "trim"
+                : y % 6 >= 2 &&
+                    y % 6 <= 4 &&
+                    (Math.abs(a) <= 1 || Math.abs(b) <= 1)
+                  ? "glass"
+                  : mat,
+            );
     for (let y = 6; y < H; y += 6) {
       for (let a = -r + 1; a < r; a++)
         for (let b = -r + 1; b < r; b++)
@@ -105,6 +160,15 @@ export function buildArchitecture(ctx, type, cx, cz, rng) {
     for (let f = 0; f < levels; f++) {
       const y = f * 6 + 1;
       box(x + W - 5, y, z + 3, 3, 1, 2, "wood");
+      box(x + W - 6, y, z + 3, 1, 1, 2, "wood");
+      box(x + W - 2, y, z + D - 5, 1, 3, 3, "brick");
+      box(x + W - 3, y + 3, z + D - 5, 2, 1, 3, "trim");
+      box(x + 5, y, z + D - 4, 3, 1, 2, "wood");
+      box(x + 5, y + 1, z + D - 4, 1, 1, 2, "plaster");
+      for (let shelf = 0; shelf < 3; shelf++) {
+        box(x + 5, y + shelf, z + 1, 3, 1, 1, "wood");
+        add(x + 6, y + shelf, z + 2, shelf % 2 ? "banner" : "copper");
+      }
       for (const a of [W - 5, W - 3]) box(x + a, y - 1, z + 3, 1, 1, 2, "wood");
       box(x + W - 3, y, z + D - 4, 1, 3, 2, "wood");
       for (let j = 0; j < 3; j++)

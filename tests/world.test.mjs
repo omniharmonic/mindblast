@@ -351,3 +351,117 @@ test("short projectile segments cannot skip a one-voxel wall", () => {
     assert.ok(Math.abs(hit.x + 0.375) < 1e-8);
   }
 });
+
+test("repeat rubble blasts conserve volume and preserve smaller physical fragments", async () => {
+  const { Vector3, Quaternion } = await import("three");
+  const { shatterRubble, raycastRubble } = await import("../src/rubble.js");
+  const d = {
+    age: 100,
+    body: {
+      translation: () => ({ x: 0, y: 3, z: 0 }),
+      rotation: () => new Quaternion(),
+    },
+    blocks: [{ offset: new Vector3(), material: "stone", size: 0.75 }],
+  };
+  const broken = shatterRubble(d, { x: 0, y: 3, z: 0 }, 2);
+  assert.equal(broken.changed, 1);
+  assert.equal(broken.blocks.length, 8);
+  assert.equal(
+    broken.blocks.reduce((n, b) => n + b.size ** 3, 0),
+    0.75 ** 3,
+  );
+  d.blocks = broken.blocks;
+  assert.equal(shatterRubble(d, { x: 0, y: 3, z: 0 }, 2).blocks.length, 8);
+  assert.ok(
+    raycastRubble([d], { x: 0.1875, y: 5, z: 0.1875 }, { x: 0, y: -1, z: 0 }),
+  );
+});
+
+test("remaining pier crushes under redistributed weight after its partner is cut", () => {
+  const blocks = [];
+  const add = (x, y, z) =>
+    blocks.push({
+      id: blocks.length,
+      x,
+      y,
+      z,
+      material: "stone",
+      structure: 0,
+      alive: true,
+    });
+  for (const x of [-1, 1]) for (let y = 0; y < 10; y++) add(x, y, 0);
+  for (let x = -3; x <= 3; x++)
+    for (let z = -2; z <= 2; z++) for (let y = 10; y <= 20; y++) add(x, y, z);
+  const w = {
+    blocks,
+    grid: new Map(blocks.map((b) => [key(b.x, b.y, b.z), b.id])),
+    structures: [{ id: 0, ids: blocks.map((b) => b.id) }],
+    removed: 0,
+    score: 0,
+  };
+  const survivor = blocks.find((b) => b.x === 1 && b.y === 1 && b.z === 0);
+  const r = destroy(w, { x: -1 * 0.75, y: 4 * 0.75, z: 0 }, 0.2);
+  assert.ok(
+    r.fallen.includes(survivor.id),
+    "the connected but overloaded remaining pier must fail",
+  );
+});
+
+test("procedural manor doorways and stairs connect furnished upper floors", async () => {
+  const { buildArchitecture } = await import("../src/architecture.js");
+  for (const value of [0.05, 0.5, 0.95]) {
+    const grid = new Map();
+    const add = (x, y, z, material) => {
+      const k = key(x, y, z);
+      if (!grid.has(k)) grid.set(k, { x, y, z, material });
+    };
+    const box = (x, y, z, w, h, d, m) => {
+      for (let a = 0; a < w; a++)
+        for (let b = 0; b < h; b++)
+          for (let c = 0; c < d; c++) add(x + a, y + b, z + c, m);
+    };
+    buildArchitecture({ add, box }, "Manor", 0, 0, () => value);
+    const cells = [...grid.values()],
+      minX = Math.min(...cells.map((b) => b.x)) - 2,
+      maxX = Math.max(...cells.map((b) => b.x)) + 2,
+      minZ = Math.min(...cells.map((b) => b.z)) - 2,
+      maxZ = Math.max(...cells.map((b) => b.z)) + 2;
+    const solid = (x, y, z) => y === -1 || grid.has(key(x, y, z));
+    const canStand = (x, y, z) =>
+      solid(x, y, z) && [1, 2, 3].every((d) => !solid(x, y + d, z));
+    const queue = [[0, -1, maxZ]],
+      seen = new Set();
+    for (let i = 0; i < queue.length; i++) {
+      const [x, y, z] = queue[i];
+      for (const [dx, dz] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ])
+        for (const dy of [-1, 0, 1]) {
+          const xx = x + dx,
+            yy = y + dy,
+            zz = z + dz,
+            k = key(xx, yy, zz);
+          if (
+            xx < minX ||
+            xx > maxX ||
+            zz < minZ ||
+            zz > maxZ ||
+            yy < -1 ||
+            seen.has(k) ||
+            !canStand(xx, yy, zz)
+          )
+            continue;
+          seen.add(k);
+          queue.push([xx, yy, zz]);
+        }
+    }
+    const highestFloor = Math.floor(2 + Math.floor(value * 3) - 1) * 6;
+    assert.ok(
+      queue.some(([x, y]) => y === highestFloor && x >= 0),
+      `upper furnished room unreachable for variant ${value}`,
+    );
+  }
+});

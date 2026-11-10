@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-Open http://localhost:5173. For production, run `npm run build` then `npm start`. Set `PORT=5174` to choose another port. Initial terrain creation takes a few seconds. Laptop saver disables shadows; the physics settings let you reduce the debris budget.
+Open http://localhost:5173. For production, run `npm run build` then `npm start`. Set `PORT=5174` to choose another port. Initial terrain creation takes a few seconds. Laptop saver disables shadows; the fragment-detail setting controls the size of initial debris groups.
 
 ## GitHub Pages and friends
 
@@ -52,14 +52,14 @@ Every tool has a 3D first-person model with metallic surfaces, gloved hands, sig
 
 ## World and destruction
 
-- Seeded castles, cathedrals, aqueducts, houses, manors, pagodas, observatories, windmills, amphitheatres, foundries, lighthouses, temples, clock towers, greenhouses, markets, fortresses, libraries, ziggurats, viaducts, and bathhouses. Dimensions, heights, arrangements, interiors, and furnishings vary. Buildings have doors, floor openings, and stairs.
+- Seeded castles, cathedrals, aqueducts, houses, manors, pagodas, observatories, windmills, amphitheatres, foundries, lighthouses, temples, clock towers, greenhouses, markets, fortresses, libraries, ziggurats, viaducts, and bathhouses. Dimensions, heights, arrangements, interiors, and furnishings vary. Buildings have front/back doorways, framed windows, sills and corner stonework, ceiling joists, interior partitions with doorways, furnished rooms, and stairs with landings.
 - 0.75 m structural voxels and 1.5 m excavatable terrain. Procedural underground chambers, tunnels, entrances, and crystal formations continue into new regions.
 - Exact grid traversal resolves shots against terrain and building faces; rotated-box tests also target fallen rubble at its current position. Projectiles check their full movement segment each frame, including close-range impacts. Terrain excavation can undermine foundations.
-- Material-dependent finite support propagation starts at grounded foundations. Vertical compression carries farther than lateral bonds, so unsupported spans shed sections instead of hanging indefinitely. This is a gameplay approximation, not engineering-grade stress analysis.
-- Detached connected sections become Rapier rigid bodies with exact merged cuboid colliders. Heavy sections receive less acceleration from blast impulses, fall under gravity, collide, and fracture further on hard impacts. Solver iterations are increased for stability. Rubble can be shot and broken down again; its remaining fragments retain their orientation and physics. Transient rubble is capped and eventually fades to preserve performance; it does not become permanent terrain.
-- Districts are requested ahead of the viewing direction. Terrain streams farther than the 105 m fog cutoff, keeping generation beyond normal visibility. Nearby terrain meshes are refreshed when new foundations flatten the ground. Mountain backdrops that intersected new districts have been removed; hills are part of the excavatable terrain. Fast teleportation can still require a brief load; world data grows as exploration continues.
-- World damage, charges, settings, and score are synchronized. Decorative rubble motion is simulated locally and may differ between players.
-- Photo-derived diffuse, normal, and roughness textures are bundled; see [texture credits](public/textures/CREDITS.md). The visual style remains voxel-based rather than fully photorealistic.
+- Material-dependent finite support propagation starts at grounded foundations. Vertical compression carries farther than lateral bonds, so unsupported spans shed sections instead of hanging indefinitely. Gravity loads are shared across stronger neighboring connections. After supports are removed, overloaded piers crush and loads redistribute repeatedly until the remaining structure stabilizes. Pristine load paths have a safety margin so generated buildings begin stable. This is a gameplay approximation, not engineering-grade stress analysis.
+- Detached connected sections become Rapier rigid bodies with exact merged cuboid colliders. Heavy sections receive less acceleration from blast impulses, fall under gravity, collide, and fracture further on hard impacts. Solver iterations are increased for stability. Rubble persists for the entire current world session, remains solid to the player, and can be shot again. Repeat blasts split blocks into smaller fragments while conserving their volume. Fragments retain orientation, angular motion, and material density. Sleeping bodies save simulation work; distant fragments pause when terrain collision is unloaded and resume when it returns. Fragment detail controls grouping, never deletion. Memory usage grows with demolition; resetting the world clears the rubble.
+- Districts are requested ahead of the viewing direction. Terrain streams farther than the 105 m fog cutoff, keeping generation beyond normal visibility. Nearby terrain meshes are refreshed when new foundations flatten the ground. Mountain backdrops that intersected new districts have been removed; hills are part of the excavatable terrain, with broad ridges, shallow gullies, fine elevation variation, and blended foundation shoulders. Fast teleportation can still require a brief load; world data grows as exploration continues.
+- World damage, charges, settings, and score are synchronized. Rubble motion and resting positions are simulated locally and may differ between players; late joiners receive structural damage but not existing rubble piles.
+- Photo-derived diffuse, normal, and roughness textures are bundled; see [texture credits](public/textures/CREDITS.md). Crystals use a separate faceted mineral texture; rocks have fissure/moss detail and trees have needle textures and bark trunks. The visual style remains voxel-based rather than fully photorealistic.
 
 Worlds live in memory. Reloading a solo game or closing the multiplayer host loses progress. The game is designed for mouse and keyboard, not touch controls.
 
@@ -81,7 +81,7 @@ The diagnostics surface `window.__mindblast` exists for repeatable local checks.
 ## Source layout
 
 - `src/world.js`, `architecture.js`, `terrain.js`: deterministic geometry, damage, support, and caves.
-- `src/main.js`, `fragments.js`, `rubble.js`, `terrain-renderer.js`, `materials.js`: rendering, physics, controls, and streaming.
+- `src/main.js`, `structure.js`, `fragments.js`, `rubble.js`, `terrain-renderer.js`, `materials.js`: rendering, physics, controls, and streaming.
 - `src/session.js`, `peer.js`, `server.mjs`: shared room authority, WebRTC, and Node/WebSocket transport.
 - `tests/`: engine, network, and browser checks.
 

@@ -1,4 +1,4 @@
-import { raycastRubble, rubbleSurvivors, nearestHit } from "./rubble.js";
+import { raycastRubble, shatterRubble, nearestHit } from "./rubble.js";
 import {
   WeaponView,
   buildCharacter,
@@ -32,7 +32,12 @@ import "./style.css";
 import { CELL, BOTTOM } from "./terrain.js";
 import { PeerRoom } from "./peer.js";
 import { TerrainRenderer } from "./terrain-renderer.js";
-import { createMaterials, palette, BlockField } from "./materials.js";
+import {
+  createMaterials,
+  palette,
+  BlockField,
+  natureMaterial,
+} from "./materials.js";
 
 const $ = (id) => document.getElementById(id);
 const canvas = $("game");
@@ -109,7 +114,7 @@ let world,
   projectiles = [],
   worldVersion = 0;
 scene.add(environment);
-const debrisMesh = new THREE.InstancedMesh(cube, material, 12000);
+let debrisMesh = new THREE.InstancedMesh(cube, material, 12000);
 debrisMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 debrisMesh.count = 0;
 debrisMesh.castShadow = true;
@@ -176,12 +181,15 @@ function buildEnvironment(seed) {
   const rng = random(seed + "nature");
   // Terrain is a streamed voxel surface; no invisible plane seals excavations.
   // Instanced forest and rocks keep the landscape inexpensive to draw.
-  const treeGeo = new THREE.ConeGeometry(1, 1, 7),
-    treeMat = new THREE.MeshStandardMaterial({
-      color: "#3e6154",
-      roughness: 1,
-    });
+  const treeGeo = new THREE.ConeGeometry(1, 1, 11, 3),
+    treeMat = natureMaterial("foliage");
   const trees = new THREE.InstancedMesh(treeGeo, treeMat, 900);
+  const trunks = new THREE.InstancedMesh(
+    new THREE.CylinderGeometry(0.16, 0.35, 1, 7),
+    natureMaterial("wood"),
+    300,
+  );
+  let trunkCount = 0;
   let n = 0;
   for (let i = 0; i < 300; i++) {
     const x = (rng() - 0.5) * 240,
@@ -199,6 +207,11 @@ function buildEnvironment(seed) {
     if (Math.abs(z + 65) < 22) continue;
     const h = 5 + rng() * 9,
       s = 1.4 + rng() * 2;
+    dummy.position.set(x, terrainHeight(x, z) + h * 0.3, z);
+    dummy.scale.set(1, h * 0.6, 1);
+    dummy.rotation.set(0, 0, 0);
+    dummy.updateMatrix();
+    trunks.setMatrixAt(trunkCount++, dummy.matrix);
     for (let j = 0; j < 3; j++) {
       dummy.position.set(x, terrainHeight(x, z) + h * (0.32 + j * 0.23), z);
       dummy.scale.set(s * (1 - j * 0.2), h * 0.6, s * (1 - j * 0.2));
@@ -212,16 +225,15 @@ function buildEnvironment(seed) {
       n++;
     }
   }
+  trunks.count = trunkCount;
+  trunks.castShadow = trunks.receiveShadow = true;
+  environment.add(trunks);
   trees.count = n;
   trees.castShadow = true;
   trees.receiveShadow = true;
   environment.add(trees);
-  const rockGeo = new THREE.IcosahedronGeometry(1, 0),
-    rocks = new THREE.InstancedMesh(
-      rockGeo,
-      new THREE.MeshStandardMaterial({ color: "#8b9285", roughness: 1 }),
-      90,
-    );
+  const rockGeo = new THREE.IcosahedronGeometry(1, 1),
+    rocks = new THREE.InstancedMesh(rockGeo, natureMaterial("rock"), 90);
   for (let i = 0; i < 90; i++) {
     let x = (rng() - 0.5) * 300,
       z = (rng() - 0.5) * 280;
@@ -262,10 +274,16 @@ function buildEnvironment(seed) {
 function addDistrictNature(rx, rz) {
   const rng = random(world.seed + ":forest:" + rx + "," + rz);
   const trees = new THREE.InstancedMesh(
-    new THREE.ConeGeometry(1, 1, 7),
-    new THREE.MeshStandardMaterial({ color: "#476653", roughness: 1 }),
+    new THREE.ConeGeometry(1, 1, 11, 3),
+    natureMaterial("foliage"),
     240,
   );
+  const trunks = new THREE.InstancedMesh(
+    new THREE.CylinderGeometry(0.16, 0.35, 1, 7),
+    natureMaterial("wood"),
+    120,
+  );
+  let trunkCount = 0;
   let count = 0;
   for (let i = 0; i < 120; i++) {
     const x = rx * 240 + (rng() - 0.5) * 240,
@@ -282,6 +300,11 @@ function addDistrictNature(rx, rz) {
     )
       continue;
     const h = 4 + rng() * 8;
+    dummy.position.set(x, terrainHeight(x, z) + h * 0.3, z);
+    dummy.rotation.set(0, 0, 0);
+    dummy.scale.set(1, h * 0.6, 1);
+    dummy.updateMatrix();
+    trunks.setMatrixAt(trunkCount++, dummy.matrix);
     for (let layer = 0; layer < 2; layer++) {
       dummy.position.set(x, terrainHeight(x, z) + h * (0.35 + layer * 0.3), z);
       dummy.rotation.set(0, rng() * 6, 0);
@@ -290,6 +313,9 @@ function addDistrictNature(rx, rz) {
       trees.setMatrixAt(count++, dummy.matrix);
     }
   }
+  trunks.count = trunkCount;
+  trunks.castShadow = trunks.receiveShadow = true;
+  environment.add(trunks);
   trees.count = count;
   trees.castShadow = true;
   trees.receiveShadow = true;
@@ -471,6 +497,10 @@ function expandRegion(rx, rz) {
 }
 function fracture(ids, point, force, collapse = false) {
   const buckets = new Map();
+  const fragmentSpan = Math.max(
+    2,
+    Math.ceil(Math.cbrt(ids.length / Math.max(40, settings.debris / 2))),
+  );
   if (collapse) {
     const remaining = new Set(ids),
       lookup = new Map(
@@ -510,19 +540,11 @@ function fracture(ids, point, force, collapse = false) {
   } else
     for (const id of ids) {
       const b = world.blocks[id],
-        k = `${Math.floor(b.x / 2)},${Math.floor(b.y / 2)},${Math.floor(b.z / 2)}`;
+        k = `${Math.floor(b.x / fragmentSpan)},${Math.floor(b.y / fragmentSpan)},${Math.floor(b.z / fragmentSpan)}`;
       if (!buckets.has(k)) buckets.set(k, []);
       buckets.get(k).push(b);
     }
-  const limit =
-    quality === "low" ? Math.min(100, settings.debris) : settings.debris;
-  let added = 0;
   for (const blocks of buckets.values()) {
-    if (added++ >= limit) break;
-    while (debris.length >= limit) {
-      const old = debris.shift();
-      physics.removeRigidBody(old.body);
-    }
     const center = new THREE.Vector3();
     for (const b of blocks)
       center.add(new THREE.Vector3(b.x * UNIT, b.y * UNIT, b.z * UNIT));
@@ -584,6 +606,7 @@ function fracture(ids, point, force, collapse = false) {
         ),
         color: setBlockColor(b).clone(),
         material: b.material,
+        size: b.size || UNIT,
       })),
     });
   }
@@ -595,6 +618,7 @@ function splitImpact(d, survivors = d.blocks, impact = true) {
   const p = d.body.translation(),
     q = d.body.rotation(),
     v = d.body.linvel(),
+    angular = d.body.angvel(),
     rotation = new THREE.Quaternion(q.x, q.y, q.z, q.w);
   const pieces = survivors.map((b) => ({
     ...b,
@@ -607,13 +631,14 @@ function splitImpact(d, survivors = d.blocks, impact = true) {
   debris.splice(i, 1);
   if (impact) impactFractures++;
   const inverseRotation = rotation.clone().invert();
-  for (let i = 0; i < pieces.length; i += 8) {
-    while (debris.length >= settings.debris) {
-      const old = debris.shift();
-      physics.removeRigidBody(old.body);
-    }
-    const blocks = pieces.slice(i, i + 8),
-      center = new THREE.Vector3();
+  const cells = new Map();
+  for (const b of pieces) {
+    const k = `${Math.floor(b.offset.x / 1.5)},${Math.floor(b.offset.y / 1.5)},${Math.floor(b.offset.z / 1.5)}`;
+    if (!cells.has(k)) cells.set(k, []);
+    cells.get(k).push(b);
+  }
+  for (const blocks of cells.values()) {
+    const center = new THREE.Vector3();
     blocks.forEach((b) => center.add(b.pos));
     center.divideScalar(blocks.length);
     const body = physics.createRigidBody(
@@ -621,18 +646,22 @@ function splitImpact(d, survivors = d.blocks, impact = true) {
         .setTranslation(center.x, center.y, center.z)
         .setRotation(q)
         .setLinvel(
-          v.x + (Math.random() - 0.5) * 2,
-          Math.max(1, v.y),
-          v.z + (Math.random() - 0.5) * 2,
+          v.x + angular.y * (center.z - p.z) - angular.z * (center.y - p.y),
+          v.y + angular.z * (center.x - p.x) - angular.x * (center.z - p.z),
+          v.z + angular.x * (center.y - p.y) - angular.y * (center.x - p.x),
         )
+        .setAngvel(angular)
         .setAngularDamping(0.3)
         .setCcdEnabled(true),
     );
     for (const b of blocks) {
       const offset = b.pos.clone().sub(center).applyQuaternion(inverseRotation);
       physics.createCollider(
-        RAPIER.ColliderDesc.cuboid(0.35, 0.35, 0.35)
+        RAPIER.ColliderDesc.cuboid(...Array(3).fill((b.size || UNIT) * 0.4875))
           .setTranslation(offset.x, offset.y, offset.z)
+          .setDensity(
+            b.material === "wood" ? 0.4 : b.material === "metal" ? 2.5 : 1.3,
+          )
           .setFriction(0.85)
           .setRestitution(0.1),
         body,
@@ -647,6 +676,7 @@ function splitImpact(d, survivors = d.blocks, impact = true) {
         offset: b.pos.clone().sub(center).applyQuaternion(inverseRotation),
         color: b.color,
         material: b.material,
+        size: b.size || UNIT,
       })),
     });
   }
@@ -655,10 +685,10 @@ let rubbleDestroyed = 0;
 function damageRubble(point, radius) {
   for (const d of [...debris]) {
     if (!debris.includes(d)) continue;
-    const survivors = rubbleSurvivors(d, point, radius);
-    if (survivors.length === d.blocks.length) continue;
-    rubbleDestroyed += d.blocks.length - survivors.length;
-    splitImpact(d, survivors, false);
+    const { blocks, changed } = shatterRubble(d, point, radius);
+    if (!changed) continue;
+    rubbleDestroyed += changed;
+    splitImpact(d, blocks, false);
   }
 }
 function shotHit(origin, direction, max = 350) {
@@ -1519,7 +1549,22 @@ window.addEventListener("resize", () => {
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });
+const playerShape = new RAPIER.Cuboid(0.23, 0.725, 0.23);
+const upright = { x: 0, y: 0, z: 0, w: 1 };
 function blocked(x, y, z) {
+  if (
+    physics.intersectionWithShape(
+      { x, y: y - 0.825, z },
+      upright,
+      playerShape,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      (c) => !!c.parent(),
+    )
+  )
+    return true;
   for (const dx of [-0.23, 0.23])
     for (const dz of [-0.23, 0.23])
       for (const dy of [-1.55, -0.85, -0.1]) {
@@ -1705,6 +1750,11 @@ function tick(now) {
       }
       if (well.age > 2) gravityWells.splice(i, 1);
     }
+    for (const d of debris) {
+      const p = d.body.translation();
+      const nearby = terrainRenderer.physicsReadyAt(p);
+      if (d.body.isEnabled() !== nearby) d.body.setEnabled(nearby);
+    }
     accumulator += dt;
     let steps = 0;
     while (accumulator >= 1 / 60 && steps < 3) {
@@ -1740,16 +1790,26 @@ function tick(now) {
       }
     }
   }
+  const required = debris.reduce((n, d) => n + d.blocks.length, 0);
+  if (required > debrisMesh.instanceMatrix.count) {
+    scene.remove(debrisMesh);
+    debrisMesh.dispose();
+    debrisMesh = new THREE.InstancedMesh(
+      cube,
+      material,
+      2 ** Math.ceil(Math.log2(required)),
+    );
+    debrisMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    debrisMesh.castShadow = debrisMesh.receiveShadow = true;
+    debrisMesh.frustumCulled = false;
+    scene.add(debrisMesh);
+  }
   let count = 0;
   const impacts = [];
   for (let i = debris.length - 1; i >= 0; i--) {
     const d = debris[i];
     d.age += playing || socket ? dt : 0;
-    if (d.age > 24) {
-      physics.removeRigidBody(d.body);
-      debris.splice(i, 1);
-      continue;
-    }
+
     const velocity = d.body.linvel();
     if (
       !d.fractured &&
@@ -1763,15 +1823,14 @@ function tick(now) {
     const p = d.body.translation(),
       q = d.body.rotation();
     const quat = new THREE.Quaternion(q.x, q.y, q.z, q.w);
-    const scale = d.age > 21 ? Math.max(0, (24 - d.age) / 3) : 1;
+    if (Math.hypot(p.x - position.x, p.z - position.z) > 180) continue;
     for (const b of d.blocks) {
-      if (count >= 12000) break;
       dummy.position
         .copy(b.offset)
         .applyQuaternion(quat)
         .add(v3.set(p.x, p.y, p.z));
       dummy.quaternion.copy(quat);
-      dummy.scale.setScalar(scale);
+      dummy.scale.setScalar((b.size || UNIT) / UNIT);
       dummy.updateMatrix();
       debrisMesh.setMatrixAt(count, dummy.matrix);
       debrisMesh.setColorAt(count, b.color);
@@ -1933,6 +1992,13 @@ window.__mindblast = {
         weapon: p.weapon,
       })),
       rubbleDestroyed,
+      rubbleBlocks: debris.reduce((n, d) => n + d.blocks.length, 0),
+      rubbleVolume: debris.reduce(
+        (n, d) =>
+          n + d.blocks.reduce((sum, b) => sum + (b.size || UNIT) ** 3, 0),
+        0,
+      ),
+      grounded,
       impactFractures,
       largeFragments: debris.filter((d) => d.blocks.length > 30).length,
     };
@@ -1968,6 +2034,9 @@ window.__mindblast = {
   },
   setRemaining(seconds) {
     remaining = seconds;
+  },
+  collisionAt(x, y, z) {
+    return blocked(x, y, z);
   },
   trace(origin, direction, max = 350) {
     const hit = shotHit(origin, direction, max);

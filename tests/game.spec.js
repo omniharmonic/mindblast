@@ -32,6 +32,7 @@ test("play, move, shoot, collapse, fly, map, pause, regenerate", async ({
     .poll(async () => (await state(page)).position[2])
     .toBeLessThan(33);
   await page.keyboard.up("w");
+  await page.evaluate(() => window.__mindblast.teleport(8, 8, 23));
   await aim(page);
   await shoot(page);
   await expect.poll(async () => (await state(page)).score).toBeGreaterThan(0);
@@ -325,6 +326,7 @@ test("fallen rubble stops shots and can be destroyed again", async ({
   await page.evaluate(() =>
     window.__mindblast.blast({ x: 12, y: 2, z: 9.75 }, 0),
   );
+  await page.waitForFunction(() => window.__mindblast.state.cooldown === 0);
   const hit = await page.evaluate(() => {
     const game = window.__mindblast;
     for (const target of game.rubbleTargets)

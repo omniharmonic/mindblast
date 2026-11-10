@@ -1,3 +1,4 @@
+import { rememberBearing, collapseStructure } from "./structure.js";
 import { Terrain, terrainLevel, CELL } from "./terrain.js";
 import { TYPES, buildArchitecture, addInterior } from "./architecture.js";
 export const UNIT = 0.75;
@@ -517,6 +518,7 @@ export function destroy(world, point, radius) {
     fallen = [],
     affected = new Set();
   const remove = (b, list) => {
+    rememberBearing(world, world.structures[b.structure]);
     b.alive = false;
     world.grid.delete(key(b.x, b.y, b.z));
     list.push(b.id);
@@ -536,6 +538,17 @@ export function destroy(world, point, radius) {
         affected.add(b.structure);
         remove(b, hit);
       }
+  if (world.terrain)
+    for (const s of world.structures) {
+      if (
+        s.bounds &&
+        point.x + radius > s.bounds.minX * UNIT &&
+        point.x - radius < s.bounds.maxX * UNIT &&
+        point.z + radius > s.bounds.minZ * UNIT &&
+        point.z - radius < s.bounds.maxZ * UNIT
+      )
+        rememberBearing(world, s);
+    }
   const excavation = world.terrain?.dig(point, radius) || {
     removed: [],
     crystals: [],
@@ -551,43 +564,8 @@ export function destroy(world, point, radius) {
         affected.add(s.id);
   for (const sid of affected) {
     const s = world.structures[sid];
-    // Propagate finite bearing strength from foundations. Vertical compression is
-    // much stronger than a lateral bond: a narrow bridge cannot hang a tower.
-    const strength = new Map(),
-      queue = [];
-    for (const id of s.ids) {
-      const b = world.blocks[id];
-      if (
-        b.alive &&
-        (b.anchor || b.y === (s.baseY || 0)) &&
-        (!world.terrain ||
-          world.terrain.at(b.x * UNIT, b.y * UNIT - 0.8, b.z * UNIT))
-      ) {
-        strength.set(id, 1);
-        queue.push(id);
-      }
-    }
-    for (let i = 0; i < queue.length; i++) {
-      const b = world.blocks[queue[i]],
-        bearing = strength.get(b.id);
-      for (const [dx, dy, dz] of directions) {
-        const id = world.grid.get(key(b.x + dx, b.y + dy, b.z + dz));
-        if (id === undefined || world.blocks[id].structure !== sid) continue;
-        const material = world.blocks[id].material;
-        const lateral =
-          material === "metal" ? 0.055 : material === "wood" ? 0.085 : 0.13;
-        const available =
-          bearing - (dy > 0 ? 0.012 : dy < 0 ? lateral * 1.5 : lateral);
-        if (available > 0 && available > (strength.get(id) || 0) + 0.0001) {
-          strength.set(id, available);
-          queue.push(id);
-        }
-      }
-    }
-    for (const id of s.ids) {
-      const b = world.blocks[id];
-      if (b.alive && !strength.has(id)) remove(b, fallen);
-    }
+    rememberBearing(world, s);
+    collapseStructure(world, s, (b) => remove(b, fallen));
   }
   const crystalBlocks = hit.filter(
     (id) => world.blocks[id].material === "crystal",
