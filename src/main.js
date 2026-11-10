@@ -270,6 +270,42 @@ function buildEnvironment(seed) {
   }
   environment.add(clouds);
 }
+function addDistrictNature(rx, rz) {
+  const rng = random(world.seed + ":forest:" + rx + "," + rz);
+  const trees = new THREE.InstancedMesh(
+    new THREE.ConeGeometry(1, 1, 7),
+    new THREE.MeshStandardMaterial({ color: "#476653", roughness: 1 }),
+    240,
+  );
+  let count = 0;
+  for (let i = 0; i < 120; i++) {
+    const x = rx * 240 + (rng() - 0.5) * 240,
+      z = rz * 240 + (rng() - 0.5) * 240;
+    if (Math.abs(x) < 215 && Math.abs(z) < 200) continue;
+    if (
+      world.structures.some(
+        (s) =>
+          x > s.bounds.minX * UNIT - 4 &&
+          x < s.bounds.maxX * UNIT + 4 &&
+          z > s.bounds.minZ * UNIT - 4 &&
+          z < s.bounds.maxZ * UNIT + 4,
+      )
+    )
+      continue;
+    const h = 4 + rng() * 8;
+    for (let layer = 0; layer < 2; layer++) {
+      dummy.position.set(x, terrainHeight(x, z) + h * (0.35 + layer * 0.3), z);
+      dummy.rotation.set(0, rng() * 6, 0);
+      dummy.scale.set(2 - layer * 0.6, h * 0.7, 2 - layer * 0.6);
+      dummy.updateMatrix();
+      trees.setMatrixAt(count++, dummy.matrix);
+    }
+  }
+  trees.count = count;
+  trees.castShadow = true;
+  trees.receiveShadow = true;
+  environment.add(trees);
+}
 function rebuildColumn(k) {
   const old = columns.get(k);
   if (old) for (const c of old) physics.removeCollider(c, true);
@@ -375,6 +411,8 @@ function buildWorld(
   );
   terrainRenderer.stream(position, true);
   buildEnvironment(seed);
+  for (const region of world.regions)
+    if (region !== "0,0") addDistrictNature(...region.split(",").map(Number));
   $("seed").value = seed;
   $("seedLabel").textContent = seed;
   $("score").textContent = score.toLocaleString();
@@ -438,6 +476,7 @@ function expandRegion(rx, rz) {
   rebuildField();
   refreshMap();
 
+  addDistrictNature(rx, rz);
   toast("New district discovered · " + added.length + " landmarks");
 }
 function fracture(ids, point, force, collapse = false) {
@@ -826,20 +865,23 @@ function detonateCharges() {
   if (!pending.length)
     toast("Select charge tool [8], aim at a surface, and click to place");
 }
+let shotDebug = null;
 function fire() {
+  shotDebug = { playing, cool, finished, weapon };
   if (!playing || cool > 0 || finished) return;
   const wi = weapon,
     w = WEAPONS[wi];
-  cool = w.cooldown;
   camera.position.copy(position);
   camera.rotation.set(pitch, yaw, 0);
   camera.updateMatrixWorld();
   camera.getWorldDirection(dir);
   const hit = raycast(world, camera.position, dir, 350);
+  shotDebug.hit = hit;
   if (!hit) {
     toast("Aim at a structure or the ground");
     return;
   }
+  cool = w.cooldown;
   const target = new THREE.Vector3(hit.x, hit.y, hit.z);
   if (wi === 7) {
     if (charges.length >= 40) {
@@ -1012,6 +1054,7 @@ function resume() {
   if (!ready) return;
   playing = true;
   started = true;
+  mouseDown = false;
   $("menu").hidden = true;
   $("hud").hidden = false;
   $("results").hidden = true;
@@ -1295,6 +1338,10 @@ function clearRemote() {
 }
 async function showNetwork() {
   if (location.hostname.endsWith("github.io")) {
+    $("room").hidden = true;
+    $("join").hidden = true;
+    document.querySelector('label[for="room"]').hidden = true;
+    $("peerPanel").open = true;
     $("lanInfo").textContent =
       "Use browser-to-browser invitations below to play together on the same network.";
     return;
@@ -1843,6 +1890,13 @@ window.__mindblast = {
         nodes: world?.terrain.caveRegion(0, 0).nodes,
         entrance: world?.terrain.caveRegion(0, 0).entrance,
       },
+      cooldown: cool,
+      shotDebug,
+      projectiles: projectiles.map((p) => ({
+        age: p.age,
+        life: p.life,
+        weapon: p.weapon,
+      })),
       impactFractures,
       largeFragments: debris.filter((d) => d.blocks.length > 30).length,
     };

@@ -10,7 +10,8 @@
     "test": "node --test tests/world.test.mjs",
     "test:browser": "playwright test",
     "test:network": "node --test tests/network.test.mjs",
-    "format": "prettier --write src server.mjs index.html tests playwright.config.js vite.config.js"
+    "format": "prettier --write src server.mjs index.html tests playwright.config.js vite.config.js",
+    "test:peer": "TEST_WEBRTC=1 playwright test --grep static-host"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.21.0",

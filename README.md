@@ -70,7 +70,7 @@ npm run test:network
 npm run test:browser
 ```
 
-Use `TEST_BASE_URL` for another HTTP origin and `TEST_ORIGIN` for another WebSocket endpoint. Browser checks cover weapons, movement, stairs, charges, terrain mining, expansion, timed mode, and multiplayer. Headless Chrome disables mDNS address hiding in the test configuration to test data-channel synchronization independently from the host environment's multicast discovery. This does not change the shipped game.
+Use `TEST_BASE_URL` for another HTTP origin and `TEST_ORIGIN` for another WebSocket endpoint. Browser checks cover weapons, movement, stairs, charges, terrain mining, expansion, timed mode, and multiplayer. The WebRTC test is opt-in: run `npm run test:peer` on a network permitting direct UDP. It could not complete on this VPN-connected development host, even when Wi-Fi candidates were exposed in an isolated browser test. Node/WebSocket multiplayer is verified. Static peer pairing remains subject to a real-device LAN check; VPN routing and client isolation can prevent it. The game never requests microphone access.
 
 The diagnostics surface `window.__mindblast` exists for repeatable local checks. Performance depends on the laptop, resolution, browser, and debris setting; use Laptop saver and fewer debris bodies on slower machines.
 

@@ -10,11 +10,7 @@ export default defineConfig({
     headless: true,
     viewport: { width: 1280, height: 800 },
     launchOptions: {
-      args: [
-        "--enable-webgl",
-        "--ignore-gpu-blocklist",
-        "--disable-features=WebRtcHideLocalIpsWithMdns",
-      ],
+      args: ["--enable-webgl", "--ignore-gpu-blocklist"],
     },
     screenshot: "only-on-failure",
   },

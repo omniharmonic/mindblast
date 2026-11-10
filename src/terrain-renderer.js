@@ -158,16 +158,31 @@ export class TerrainRenderer {
       }));
     const mesh = new THREE.Mesh(g, mats);
     mesh.receiveShadow = true;
-    mesh.castShadow = true;
+    mesh.castShadow = false;
     this.scene.add(mesh);
-    const indices = Uint32Array.from({ length: p.length / 3 }, (_, i) => i);
-    const collider = this.physics.createCollider(
-      RAPIER.ColliderDesc.trimesh(new Float32Array(p), indices).setFriction(
-        0.9,
-      ),
-    );
-    this.chunks.set(k, { mesh, collider });
+    const chunk = { mesh, collider: null };
+    this.chunks.set(k, chunk);
+    this.syncCollider(chunk, cx, cz);
   }
+  syncCollider(chunk, x, z) {
+    if (chunk.empty) return;
+    const near =
+      Math.abs(x - this.streamX) <= 2 && Math.abs(z - this.streamZ) <= 2;
+    if (!near && chunk.collider) {
+      this.physics.removeCollider(chunk.collider, true);
+      chunk.collider = null;
+    } else if (near && !chunk.collider) {
+      const positions = chunk.mesh.geometry.attributes.position.array;
+      const indices = Uint32Array.from(
+        { length: positions.length / 3 },
+        (_, i) => i,
+      );
+      chunk.collider = this.physics.createCollider(
+        RAPIER.ColliderDesc.trimesh(positions, indices).setFriction(0.9),
+      );
+    }
+  }
+
   farMesh(cx, cz) {
     if (this.far) {
       this.scene.remove(this.far);
@@ -221,6 +236,12 @@ export class TerrainRenderer {
       k = cx + "," + cz;
     if (k === this.center) return;
     this.center = k;
+    this.streamX = cx;
+    this.streamZ = cz;
+    for (const [key, c] of this.chunks) {
+      const [x, , z] = key.split(",").map(Number);
+      this.syncCollider(c, x, z);
+    }
     this.farMesh(cx, cz);
     const wanted = new Set();
     for (let x = cx - 5; x <= cx + 5; x++)

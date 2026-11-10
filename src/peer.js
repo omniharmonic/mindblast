@@ -16,7 +16,12 @@ function connectionCode(pc, address) {
       address.split(".").some((n) => Number(n) > 255)
     )
       throw Error("Enter a valid local IPv4 address");
-    description.sdp = description.sdp.replace(/[a-zA-Z0-9-]+\.local/g, address);
+    description.sdp = description.sdp
+      .replace(/[a-zA-Z0-9-]+\.local/g, address)
+      .replace(
+        /(a=candidate:\S+ \d+ udp \d+ )\S+( \d+ typ host)/g,
+        (_, before, after) => before + address + after,
+      );
   }
   return encode(description);
 }
@@ -25,7 +30,8 @@ async function gather(pc) {
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       pc.removeEventListener("icegatheringstatechange", change);
-      reject(Error("Could not gather local network candidates"));
+      if (/a=candidate:/.test(pc.localDescription?.sdp || "")) resolve();
+      else reject(Error("Could not gather local network candidates"));
     }, 12000);
     function change() {
       if (pc.iceGatheringState === "complete") {
@@ -151,6 +157,12 @@ export class PeerRoom {
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
     this.connections.push(pc);
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === "failed")
+        this.status(
+          "Direct UDP connection failed. VPN routing or Wi-Fi isolation may block it. Try the Node LAN mode or a network permitting direct local connections.",
+        );
+    };
     pc.ondatachannel = ({ channel }) => {
       this.sendRemote = channelMessages(channel, (m) => this.emit(m));
       channel.onopen = () => {
