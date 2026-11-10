@@ -782,6 +782,8 @@ function showDestruction(
   }
   staticMesh.instanceMatrix.needsUpdate = true;
   for (const k of changed) rebuildColumn(k);
+  // Remote blasts also need terrain contacts until their debris settles.
+  terrainRenderer.addPhysicsFocus(point);
   fracture(result.hit, point, blastForce);
   fracture(result.fallen, point, blastForce, true);
   burst(point, wi, blastRadius);

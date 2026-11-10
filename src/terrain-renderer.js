@@ -72,6 +72,7 @@ export class TerrainRenderer {
     this.chunks = new Map();
     this.center = "";
     this.queue = [];
+    this.physicsFoci = new Map();
     this.colors = ["#8ca16b", "#a48b6d", "#a7a39c", "#777f85", "#81b8e9"].map(
       (c) => new THREE.Color(c),
     );
@@ -171,10 +172,26 @@ export class TerrainRenderer {
     this.chunks.set(k, chunk);
     this.syncCollider(chunk, cx, cz);
   }
+  addPhysicsFocus(point) {
+    const x = Math.floor(point.x / (CELL * CHUNK)),
+      z = Math.floor(point.z / (CELL * CHUNK));
+    this.physicsFoci.set(x + "," + z, {
+      x,
+      z,
+      until: performance.now() + 26000,
+    });
+    for (const [key, chunk] of this.chunks) {
+      const [cx, , cz] = key.split(",").map(Number);
+      this.syncCollider(chunk, cx, cz);
+    }
+  }
   syncCollider(chunk, x, z) {
     if (chunk.empty) return;
     const near =
-      Math.abs(x - this.streamX) <= 2 && Math.abs(z - this.streamZ) <= 2;
+      (Math.abs(x - this.streamX) <= 2 && Math.abs(z - this.streamZ) <= 2) ||
+      [...this.physicsFoci.values()].some(
+        (p) => Math.abs(x - p.x) <= 2 && Math.abs(z - p.z) <= 2,
+      );
     if (!near && chunk.collider) {
       this.physics.removeCollider(chunk.collider, true);
       chunk.collider = null;
@@ -243,6 +260,8 @@ export class TerrainRenderer {
       k = cx + "," + cz;
     if (k === this.center) return;
     this.center = k;
+    for (const [id, p] of this.physicsFoci)
+      if (p.until < performance.now()) this.physicsFoci.delete(id);
     this.streamX = cx;
     this.streamZ = cz;
     for (const [key, c] of this.chunks) {
